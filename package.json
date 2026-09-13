@@ -1,0 +1,77 @@
+{
+  "name": "tableu",
+  "version": "0.1.0",
+  "description": "Trinh xem va truy van MySQL don gian cho Ubuntu",
+  "main": "main.js",
+  "author": "tinhtn",
+  "license": "MIT",
+  "scripts": {
+    "start": "ELECTRON_RUN_AS_NODE= electron .",
+    "dev": "ELECTRON_RUN_AS_NODE= electron . --enable-logging",
+    "pack": "electron-builder --linux dir",
+    "dist:deb": "npm run pack && bash scripts/build-deb.sh",
+    "dist:appimage": "electron-builder --linux AppImage",
+    "dist": "npm run dist:appimage && npm run dist:deb"
+  },
+  "dependencies": {
+    "mysql2": "^3.11.5"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "app.tableu.client",
+    "productName": "TableU",
+    "copyright": "Copyright © 2026 tinhtn",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "Development",
+      "maintainer": "tinhtn <tinh.icolor@gmail.com>",
+      "synopsis": "Trình xem bảng và chạy truy vấn MySQL",
+      "description": "Trình xem bảng và chạy truy vấn MySQL gọn nhẹ cho Linux: duyệt database, xem dữ liệu dạng lưới, viết SQL.",
+      "desktop": {
+        "entry": {
+          "Name": "TableU",
+          "Comment": "Trình xem bảng MySQL",
+          "Keywords": "mysql;database;sql;",
+          "StartupWMClass": "TableU"
+        }
+      }
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libsecret-1-0"
+      ]
+    },
+    "appImage": {
+      "artifactName": "${productName}-${version}-${arch}.AppImage"
+    }
+  },
+  "homepage": "https://example.com/tableu"
+}
