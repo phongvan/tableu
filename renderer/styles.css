@@ -231,11 +231,30 @@ body {
   height: 38px; background: var(--bg-alt);
   border-bottom: 1px solid var(--border);
   overflow-x: auto; scrollbar-width: none;
+  overscroll-behavior-x: contain;   /* dung truot lan sang trang phia sau */
+  scroll-behavior: smooth;
 }
 .tabbar::-webkit-scrollbar { display: none; }
 .tabbar:empty { display: none; }
+
+/* Khong co scrollbar nen phai bao hieu con tab bi khuat: lam mo dan o ria.
+   Mask an theo border-box nen no dung yen khi cuon, khong troi theo tab. */
+.tabbar.ovf-right {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent);
+          mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent);
+}
+.tabbar.ovf-left {
+  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 34px), transparent);
+          mask-image: linear-gradient(to left, #000 calc(100% - 34px), transparent);
+}
+.tabbar.ovf-left.ovf-right {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 34px, #000 calc(100% - 34px), transparent);
+          mask-image: linear-gradient(to right, transparent, #000 34px, #000 calc(100% - 34px), transparent);
+}
+
 .tab {
   display: flex; align-items: center; gap: 8px;
+  flex: 0 0 auto;                   /* khong co lai -> thanh tab tran ra va cuon duoc */
   padding: 0 10px 0 13px; cursor: default; white-space: nowrap;
   border-right: 1px solid var(--border); color: var(--text-dim);
   max-width: 250px; font-size: 13.5px; position: relative;

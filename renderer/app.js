@@ -353,6 +353,7 @@ function renderTabs() {
   tabbar.textContent = '';
   for (const tab of state.tabs) {
     const t = el('div', `tab ${tab.type} ${tab.id === state.activeTabId ? 'active' : ''}`);
+    t.dataset.tabId = tab.id;
     t.appendChild(el('span', 'tab-ico', tab.type === 'query' ? '▶' : '▤'));
     const lbl = el('span', 'tab-label', tab.title);
     lbl.title = tab.type === 'data' ? `${tab.database}.${tab.table}` : tab.title;
@@ -365,12 +366,68 @@ function renderTabs() {
     tabbar.appendChild(t);
   }
   $('#empty-state').style.display = state.tabs.length ? 'none' : 'flex';
+  updateTabOverflow();
+}
+
+/* Thanh tab an scrollbar (xem .tabbar trong styles.css), nen can:
+   - lan chuot de truot ngang, vi Chromium khong tu quy deltaY sang cuon ngang
+   - tu cuon toi tab dang chon, neu khong tab moi mo co the nam ngoai vung nhin
+   - lam mo ria de biet con tab bi khuat */
+
+function updateTabOverflow() {
+  const max = tabbar.scrollWidth - tabbar.clientWidth;
+  tabbar.classList.toggle('ovf-left', tabbar.scrollLeft > 1);
+  tabbar.classList.toggle('ovf-right', max > 1 && tabbar.scrollLeft < max - 1);
+}
+
+// chuan hoa vi wheel co the bao theo pixel (0), dong (1) hoac trang (2)
+function wheelPixels(e, axis) {
+  const raw = axis === 'x' ? e.deltaX : e.deltaY;
+  if (e.deltaMode === 1) return raw * 16;
+  if (e.deltaMode === 2) return raw * tabbar.clientWidth;
+  return raw;
+}
+
+tabbar.addEventListener('wheel', (e) => {
+  if (tabbar.scrollWidth <= tabbar.clientWidth) return;
+  const dx = wheelPixels(e, 'x');
+  const dy = wheelPixels(e, 'y');
+  const delta = Math.abs(dy) > Math.abs(dx) ? dy : dx;
+  if (!delta) return;
+  e.preventDefault();
+  // scroll-behavior: smooth lam lan chuot bi tre, nen dat truc tiep khi lan
+  const prev = tabbar.style.scrollBehavior;
+  tabbar.style.scrollBehavior = 'auto';
+  tabbar.scrollLeft += delta;
+  tabbar.style.scrollBehavior = prev;
+}, { passive: false });
+
+tabbar.addEventListener('scroll', updateTabOverflow, { passive: true });
+window.addEventListener('resize', updateTabOverflow);
+
+// Do bang rect chu khong dung offsetLeft: offsetLeft tinh tu offsetParent
+// (la <body>, vi .tabbar khong duoc position), nen lech dung bang be rong sidebar.
+function scrollTabIntoView(id) {
+  const node = tabbar.querySelector(`.tab[data-tab-id="${id}"]`);
+  if (!node) return;
+  const bar = tabbar.getBoundingClientRect();
+  const t = node.getBoundingClientRect();
+  const PAD = 36; // chua vua het dai mo dan o ria (34px) de tab khong bi mo
+
+  if (t.width >= bar.width) {
+    tabbar.scrollLeft += t.left - bar.left;      // tab rong hon thanh: canh mep trai
+  } else if (t.left < bar.left + PAD) {
+    tabbar.scrollLeft -= (bar.left + PAD) - t.left;
+  } else if (t.right > bar.right - PAD) {
+    tabbar.scrollLeft += t.right - (bar.right - PAD);
+  }
 }
 
 function activateTab(id) {
   state.activeTabId = id;
   for (const t of state.tabs) t.pane.classList.toggle('active', t.id === id);
   renderTabs();
+  scrollTabIntoView(id);
   const tab = state.tabs.find((t) => t.id === id);
   if (tab && tab.onFocus) tab.onFocus();
 }
