@@ -5,6 +5,8 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';" />
   <title>TableU</title>
+  <link rel="stylesheet" href="vendor/codemirror/lib/codemirror.css" />
+  <link rel="stylesheet" href="vendor/codemirror/addon/hint/show-hint.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -75,6 +77,17 @@
 
   <div id="ctx-menu" class="ctx-menu" hidden></div>
 
+  <!-- CodeMirror 5 (UMD, nap theo thu tu: core -> mode -> addon). Xem
+       scripts/vendor-codemirror.sh. Phai dung truoc app.js. -->
+  <script src="vendor/codemirror/lib/codemirror.js"></script>
+  <script src="vendor/codemirror/mode/sql/sql.js"></script>
+  <script src="vendor/codemirror/addon/hint/show-hint.js"></script>
+  <script src="vendor/codemirror/addon/hint/sql-hint.js"></script>
+  <script src="vendor/codemirror/addon/edit/matchbrackets.js"></script>
+  <script src="vendor/codemirror/addon/edit/closebrackets.js"></script>
+  <script src="vendor/codemirror/addon/comment/comment.js"></script>
+  <script src="vendor/codemirror/addon/display/placeholder.js"></script>
+  <script src="vendor/codemirror/addon/selection/active-line.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

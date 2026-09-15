@@ -893,6 +893,28 @@ function openDataTab(conn, database, table, initialView) {
 
 /* -------------------------------------------------------- query tab */
 
+const schemaCache = new Map();
+
+// Do tren bang 453 cot: ve luoi ton ~1 giay cho moi 45.000 the <td>
+// (60k o = 1,4s | 120k = 2,7s | 300k = 6,2s). Chon 120.000 de ca xau nhat
+// dong bang khoang 2,7 giay. Voi bang 54 cot thi muc nay la 2.222 dong,
+// tren ca mac dinh 1.000 nen khong anh huong dung thuong ngay.
+const MAX_O_LUOI = 120000;
+
+function canhBaoCat(r, veThieu, toiDaVe, soCot) {
+  const d = el('div', 'canh-bao');
+  const phan = [];
+  if (r.biCat) {
+    phan.push(`Kết quả đã bị cắt ở ${fmtNum(r.gioiHan)} dòng (còn nữa nhưng không lấy về).`);
+  }
+  if (veThieu) {
+    phan.push(`Chỉ vẽ ${fmtNum(toiDaVe)} dòng vì bảng có ${soCot} cột — vẽ hết sẽ làm treo cửa sổ.`);
+  }
+  phan.push('Thêm LIMIT vào câu lệnh, hoặc đổi ô “Tối đa” ở trên.');
+  d.textContent = `⚠ ${phan.join(' ')}`;
+  return d;
+}
+
 function openQueryTab(conn, database, initialSql) {
   const pane = el('div', 'pane');
   const tab = {
@@ -906,12 +928,34 @@ function openQueryTab(conn, database, initialSql) {
   };
 
   const editorWrap = el('div', 'editor-wrap');
-  const ta = el('textarea', 'sql');
-  ta.spellcheck = false;
-  ta.value = initialSql || '';
-  ta.placeholder = 'SELECT * FROM ... ;   (Ctrl+Enter để chạy)';
-  editorWrap.appendChild(ta);
   pane.appendChild(editorWrap);
+
+  const cm = CodeMirror(editorWrap, {
+    value: initialSql || '',
+    mode: 'text/x-mysql',
+    theme: 'tableu',   // mau lay tu bien CSS nen tu doi theo sang/toi
+    lineNumbers: true,
+    lineWrapping: true,
+    matchBrackets: true,
+    autoCloseBrackets: true,
+    styleActiveLine: true,
+    indentUnit: 2,
+    tabSize: 2,
+    placeholder: 'SELECT * FROM ... ;      (Ctrl+Enter để chạy, Ctrl+Space để gợi ý)',
+    extraKeys: {
+      'Ctrl-Enter': () => run(),
+      'Cmd-Enter': () => run(),
+      'Ctrl-Space': (c) => c.showHint({ completeSingle: false }),
+      'Ctrl-/': (c) => c.toggleComment(),
+      'Cmd-/': (c) => c.toggleComment(),
+      Tab: (c) => {
+        if (c.somethingSelected()) c.indentSelection('add');
+        else c.replaceSelection('  ', 'end');
+      },
+    },
+  });
+  cm.setSize('100%', 190);
+  tab.cm = cm;
 
   const hsplit = el('div', 'hsplitter');
   pane.appendChild(hsplit);
@@ -922,9 +966,19 @@ function openQueryTab(conn, database, initialSql) {
   const dbLabel = el('label', '', 'Database:');
   const dbSel = el('select', 'input');
   const btnCsv = el('button', 'btn ghost', 'CSV');
+  const limLabel = el('label', '', 'Tối đa:');
+  const limSel = el('select', 'input');
+  for (const n of [200, 1000, 5000, 20000]) {
+    const o = el('option', '', `${fmtNum(n)} dòng`);
+    o.value = String(n);
+    if (n === 1000) o.selected = true;
+    limSel.appendChild(o);
+  }
+  limSel.title = 'Chặn câu lệnh không có LIMIT kéo về cả bảng và làm treo cửa sổ';
   const timing = el('span', '');
   timing.style.cssText = 'margin-left:auto;color:var(--text-dim);font-size:12px';
-  bar.append(btnRun, el('div', 'tb-sep'), dbLabel, dbSel, el('div', 'tb-sep'), btnCsv, timing);
+  bar.append(btnRun, el('div', 'tb-sep'), dbLabel, dbSel,
+             el('div', 'tb-sep'), limLabel, limSel, el('div', 'tb-sep'), btnCsv, timing);
   pane.appendChild(bar);
 
   const body = el('div', 'grid-wrap');
@@ -949,12 +1003,29 @@ function openQueryTab(conn, database, initialSql) {
     tab.database = dbSel.value;
     tab.title = `Query · ${tab.database || conn.name}`;
     renderTabs();
+    napGoiY();
   };
 
+  // Do schema vao sql-hint. Cache theo (ket noi, database) vi doc
+  // information_schema cho ca DB ton ~30ms va rat it khi doi.
+  async function napGoiY() {
+    const db = tab.database;
+    if (!db) { cm.setOption('hintOptions', { tables: {} }); return; }
+    const khoa = `${conn.id}::${db}`;
+    if (!schemaCache.has(khoa)) {
+      try {
+        schemaCache.set(khoa, unwrap(await api.db.schema(conn.id, db)));
+      } catch (e) {
+        status(`Không lấy được danh sách bảng để gợi ý: ${errText(e)}`, true);
+        schemaCache.set(khoa, {});
+      }
+    }
+    cm.setOption('hintOptions', { tables: schemaCache.get(khoa) });
+  }
+  napGoiY();
+
   function selectedSql() {
-    const s = ta.selectionStart;
-    const e = ta.selectionEnd;
-    const sql = (s !== e ? ta.value.slice(s, e) : ta.value).trim();
+    const sql = (cm.somethingSelected() ? cm.getSelection() : cm.getValue()).trim();
     return sql.replace(/;\s*$/, '');
   }
 
@@ -965,13 +1036,26 @@ function openQueryTab(conn, database, initialSql) {
     body.appendChild(el('div', 'msg', 'Đang chạy…'));
     btnRun.disabled = true;
     try {
-      const r = unwrap(await api.db.query(conn.id, tab.database, sql));
+      const r = unwrap(await api.db.query(conn.id, tab.database, sql, Number(limSel.value)));
       body.textContent = '';
       if (r.kind === 'rows') {
+        // Chot chan thu hai, tinh theo SO O chu khong theo so dong: 1.000 dong
+        // cua bang 453 cot van la 453.000 the <td> va se lam treo cua so.
+        const soCot = Math.max(r.columns.length, 1);
+        const toiDaVe = Math.max(1, Math.floor(MAX_O_LUOI / soCot));
+        const veThieu = r.rows.length > toiDaVe;
+        if (veThieu) r.rows = r.rows.slice(0, toiDaVe);
         tab.result = r;
+
         renderGrid(body, r, { offset: 0 });
+        // Phai chen SAU renderGrid: renderGrid mo dau bang container.textContent=''
+        if (r.biCat || veThieu) {
+          body.insertBefore(canhBaoCat(r, veThieu, toiDaVe, soCot), body.firstChild);
+        }
         timing.textContent = `${fmtNum(r.rows.length)} dòng · ${r.elapsed} ms`;
-        status(`Trả về ${fmtNum(r.rows.length)} dòng trong ${r.elapsed} ms`);
+        status(r.biCat
+          ? `Đã cắt ở ${fmtNum(r.gioiHan)} dòng — thêm LIMIT vào câu lệnh để lấy đúng phần cần`
+          : `Trả về ${fmtNum(r.rows.length)} dòng trong ${r.elapsed} ms`);
       } else {
         tab.result = null;
         const parts = [`OK — ${fmtNum(r.affectedRows)} dòng bị ảnh hưởng`];
@@ -1000,30 +1084,32 @@ function openQueryTab(conn, database, initialSql) {
 
   btnRun.onclick = run;
   btnCsv.onclick = () => exportCsv('query.csv', tab.result);
-  ta.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); run(); }
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const s = ta.selectionStart;
-      ta.setRangeText('  ', s, ta.selectionEnd, 'end');
-    }
+  // Goi y sau khi go chu cai. completeSingle:false de khong bao gio tu chen.
+  cm.on('inputRead', (_c, ch) => {
+    if (ch.origin !== '+input') return;
+    const go = ch.text[0];
+    if (!/[\w.]/.test(go || '')) return;
+    if (cm.state.completionActive) return;
+    cm.showHint({ completeSingle: false });
   });
-  tab.onFocus = () => { fillDatabases(); ta.focus(); };
+
+  tab.onFocus = () => { fillDatabases(); napGoiY(); cm.refresh(); cm.focus(); };
   tab.onRefresh = run;
 
   // kéo để đổi chiều cao editor
   hsplit.addEventListener('mousedown', (e) => {
     e.preventDefault();
     const startY = e.clientY;
-    const startH = ta.offsetHeight;
-    const move = (ev) => { ta.style.height = `${Math.max(60, startH + ev.clientY - startY)}px`; };
+    const startH = cm.getWrapperElement().offsetHeight;
+    const move = (ev) => { cm.setSize('100%', Math.max(60, startH + ev.clientY - startY)); };
     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
   });
 
   addTab(tab);
-  ta.focus();
+  cm.refresh();
+  cm.focus();
   return tab;
 }
 

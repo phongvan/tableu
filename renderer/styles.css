@@ -413,12 +413,58 @@ tbody tr:hover td.rownum { color: var(--accent); }
 
 /* ========================================================== soạn thảo */
 .editor-wrap { flex: 0 0 auto; display: flex; flex-direction: column; min-height: 80px; }
-textarea.sql {
-  width: 100%; height: 190px; resize: none;
-  font: 14px/1.65 var(--font-mono); color: var(--text); background: var(--bg);
-  border: none; padding: 12px 14px; outline: none; user-select: text; tab-size: 2;
+
+/* ---- theme CodeMirror: mau lay tu bien CSS nen tu doi theo sang/toi ---- */
+:root { --cm-str: #1a7f4f; --cm-kw: var(--accent); }
+html[data-theme="dark"] { --cm-str: #6fc48f; }
+
+.CodeMirror.cm-s-tableu {
+  height: 190px;
+  font: 14px/1.6 var(--font-mono);
+  color: var(--text); background: var(--bg);
+  user-select: text;
 }
-textarea.sql::placeholder { color: var(--text-faint); }
+.cm-s-tableu .CodeMirror-gutters {
+  background: var(--bg-alt); border-right: 1px solid var(--border);
+}
+.cm-s-tableu .CodeMirror-linenumber { color: var(--text-faint); font-size: 12px; padding: 0 8px 0 6px; }
+.cm-s-tableu .CodeMirror-cursor { border-left: 2px solid var(--accent); }
+.cm-s-tableu .CodeMirror-activeline-background { background: var(--bg-alt); }
+.cm-s-tableu .CodeMirror-selected { background: var(--accent-soft); }
+.cm-s-tableu.CodeMirror-focused .CodeMirror-selected { background: var(--accent-soft); }
+.cm-s-tableu .CodeMirror-matchingbracket {
+  color: var(--accent) !important; font-weight: 700;
+  border-bottom: 1px solid var(--accent);
+}
+.cm-s-tableu .CodeMirror-placeholder { color: var(--text-faint) !important; }
+.cm-s-tableu .CodeMirror-lines { padding: 10px 0; }
+.cm-s-tableu .CodeMirror-line { padding: 0 10px; }
+
+.cm-s-tableu .cm-keyword  { color: var(--cm-kw); font-weight: 600; }
+.cm-s-tableu .cm-builtin,
+.cm-s-tableu .cm-type     { color: var(--c-time); }
+.cm-s-tableu .cm-string,
+.cm-s-tableu .cm-string-2 { color: var(--cm-str); }
+.cm-s-tableu .cm-number   { color: var(--c-num); }
+.cm-s-tableu .cm-atom     { color: var(--c-bool); }
+.cm-s-tableu .cm-comment  { color: var(--text-faint); font-style: italic; }
+.cm-s-tableu .cm-operator { color: var(--text-dim); }
+.cm-s-tableu .cm-punctuation,
+.cm-s-tableu .cm-bracket  { color: var(--text-dim); }
+.cm-s-tableu .cm-variable   { color: var(--text); }
+.cm-s-tableu .cm-variable-2 { color: var(--c-json); }   /* ten bang/cot sau khi quote */
+.cm-s-tableu .cm-error    { color: var(--danger); }
+
+/* ---- danh sach goi y ---- */
+.CodeMirror-hints {
+  z-index: 200; padding: 4px; max-height: 260px;
+  font: 13px var(--font-mono);
+  background: var(--bg-raised); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+}
+.CodeMirror-hint { padding: 4px 10px; border-radius: var(--r-sm); color: var(--text); }
+li.CodeMirror-hint-active { background: var(--accent); color: #fff; }
 .hsplitter {
   height: 6px; cursor: row-resize; flex: 0 0 auto;
   background: var(--bg-alt); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
@@ -440,6 +486,14 @@ textarea.sql::placeholder { color: var(--text-faint); }
   border-left: 3px solid var(--ok); margin: 12px; border-radius: 0 var(--r-md) var(--r-md) 0;
 }
 .msg.dim { color: var(--text-faint); }
+
+.canh-bao {
+  padding: 9px 14px; font-size: 13px; line-height: 1.5;
+  color: var(--warn); background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  position: sticky; left: 0;
+}
 
 pre.ddl {
   margin: 0; padding: 16px 18px; font: 13px/1.7 var(--font-mono);

@@ -12,6 +12,18 @@ npm install     # chỉ lần đầu
 npm start
 ```
 
+## Kiểm thử
+
+```bash
+npm test              # tất cả
+npm test 02           # chỉ suite khớp "02"
+```
+
+Test mở cửa sổ thật và thao tác như người dùng. Mọi phép ghi chỉ chạy trên database nháp
+`tableu_playground` (tự dựng lại trước mỗi lần chạy) — không bao giờ đụng dữ liệu thật.
+Đổi máy chủ MySQL bằng `TABLEU_TEST_HOST`, `TABLEU_TEST_PORT`, `TABLEU_TEST_USER`,
+`TABLEU_TEST_PASS`.
+
 ## Đóng gói
 
 ```bash
@@ -80,7 +92,7 @@ Trước khi phát hành cho người khác, sửa `homepage` trong `package.jso
 | Tab dữ liệu | Lưới cuộn với header dính, sắp xếp bằng cách bấm tên cột, phân trang 100–1000 dòng, ô `WHERE` tự do, **sửa ô tại chỗ**, xóa dòng, xuất CSV |
 | Tab cấu trúc | Danh sách cột (kiểu, NULL, khóa, mặc định, ghi chú) + chỉ mục |
 | Tab DDL | `SHOW CREATE TABLE` |
-| Tab truy vấn | Soạn SQL, `Ctrl+Enter` để chạy, bôi đen để chỉ chạy phần chọn, xuất CSV |
+| Tab truy vấn | Soạn SQL **có tô màu cú pháp và gợi ý tên bảng/cột**, `Ctrl+Enter` để chạy, bôi đen để chỉ chạy phần chọn, **giới hạn số dòng trả về**, xuất CSV |
 | Khác | Giao diện sáng/tối, menu chuột phải, kéo đổi rộng cây/cao ô soạn thảo |
 
 ## Sửa dữ liệu trên lưới
@@ -117,6 +129,42 @@ Không sửa được trong các trường hợp sau, khi đó thanh công cụ 
 | Kết quả ở tab truy vấn | Không suy ra được bảng nguồn từ một câu SELECT bất kỳ |
 
 Chưa có: **thêm dòng mới**, hoàn tác, và sửa nhiều ô rồi lưu một lượt. Mỗi ô lưu ngay khi Enter.
+
+## Soạn SQL
+
+Ô soạn thảo dùng CodeMirror 5: tô màu cú pháp MySQL, số dòng, tự đóng ngoặc, tô ngoặc khớp,
+làm nổi dòng đang đứng.
+
+| Phím | Việc |
+|---|---|
+| `Ctrl+Enter` | Chạy (bôi đen thì chỉ chạy phần chọn) |
+| `Ctrl+Space` | Gợi ý tên bảng / cột |
+| `Ctrl+/` | Bật tắt chú thích dòng |
+| `Tab` | Thụt lề (có bôi đen thì thụt cả khối) |
+
+Gợi ý lấy từ `information_schema` của database đang chọn: gõ vài chữ ra tên bảng, gõ
+`tên_bảng.` ra danh sách cột của đúng bảng đó. Danh sách được nhớ theo từng database
+(đọc lần đầu mất ~30 ms cho 132 bảng / 1.542 cột) và tự nạp lại khi bạn đổi database.
+Gợi ý không bao giờ tự chèn — phải chọn rồi Enter.
+
+### Giới hạn số dòng
+
+Ô **Tối đa** trên thanh công cụ chặn câu lệnh không có `LIMIT` kéo về cả bảng. Mặc định
+1.000 dòng. Khi bị cắt, một dải cảnh báo hiện ngay trên lưới.
+
+Cần thiết vì `SELECT * FROM daily` (161.608 dòng × 54 cột) làm **treo cứng cửa sổ** —
+phải giết tiến trình. Nay câu đó xong trong khoảng 2 giây. Ngoài giới hạn dòng còn một chốt
+chặn theo **số ô** (120.000): 1.000 dòng của bảng 453 cột vẫn là 453.000 ô và vẫn treo, nên
+lưới chỉ vẽ số dòng vừa ngưỡng và nói rõ đã vẽ thiếu bao nhiêu.
+
+### Vì sao là CodeMirror 5 chứ không phải 6
+
+CodeMirror 6 là ESM chia thành nhiều gói, dùng nó sẽ **buộc dự án phải thêm bundler** và
+mất tính chất "sửa file là chạy ngay". CodeMirror 5 là UMD một file, thả vào `renderer/vendor/`
+là xong, và CSP `script-src 'self'` vẫn cho chạy.
+
+Các file lấy từ `node_modules` bằng [scripts/vendor-codemirror.sh](scripts/vendor-codemirror.sh)
+và được commit vào repo (~584 KB). Nâng cấp thì `npm i -D codemirror@5` rồi chạy lại script đó.
 
 ## Giao diện
 

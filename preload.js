@@ -19,7 +19,8 @@ contextBridge.exposeInMainWorld('api', {
     indexes: (connId, database, table) => invoke('db:indexes', connId, database, table),
     ddl: (connId, database, table) => invoke('db:ddl', connId, database, table),
     rows: (connId, database, table, opts) => invoke('db:rows', connId, database, table, opts),
-    query: (connId, database, sql) => invoke('db:query', connId, database, sql),
+    query: (connId, database, sql, maxRows) => invoke('db:query', connId, database, sql, maxRows),
+    schema: (connId, database) => invoke('db:schema', connId, database),
     updateCell: (connId, database, table, keyValues, column, value) =>
       invoke('db:updateCell', connId, database, table, keyValues, column, value),
     deleteRow: (connId, database, table, keyValues) =>

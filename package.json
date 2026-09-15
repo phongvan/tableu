@@ -8,6 +8,7 @@
   "scripts": {
     "start": "ELECTRON_RUN_AS_NODE= electron .",
     "dev": "ELECTRON_RUN_AS_NODE= electron . --enable-logging",
+    "test": "node test/run.js",
     "pack": "electron-builder --linux dir",
     "dist:deb": "npm run pack && bash scripts/build-deb.sh",
     "dist:appimage": "electron-builder --linux AppImage",
@@ -17,6 +18,7 @@
     "mysql2": "^3.11.5"
   },
   "devDependencies": {
+    "codemirror": "^5.65.21",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8"
   },

@@ -26,42 +26,37 @@ biến `require('electron')` thành một chuỗi đường dẫn. Khi tự gọ
 
 ## Kiểm thử
 
-**Không có test framework, không có test suite.** Cách kiểm chứng đang dùng là viết một script
-Electron dùng-một-lần trong thư mục scratchpad, `require` thẳng `main.js` rồi điều khiển renderer:
-
-```js
-const { app, BrowserWindow } = require('electron');
-app.setPath('userData', `${process.env.OUT}/userdata`);   // đừng đụng cấu hình thật
-require('/home/tinhtn/Desktop/tableU/main.js');
-app.whenReady().then(async () => {
-  const win = BrowserWindow.getAllWindows()[0];
-  win.webContents.on('console-message', (_e, l, m) => console.log(`[${l}] ${m}`));
-  const run = (js) => win.webContents.executeJavaScript(js, true);
-  await run(`window.__tableu.reloadConnections()`);
-  // ... thao tác rồi đo bằng getComputedStyle / getBoundingClientRect
-  require('fs').writeFileSync('shot.png', (await win.webContents.capturePage()).toPNG());
-  app.exit(0);
-});
+```bash
+npm test              # tất cả suite
+npm test 02           # chỉ suite có "02" trong tên
 ```
 
-Cuối `renderer/app.js` có hook `window.__tableu` (state, reloadConnections, toggleConn,
-toggleDb, openDataTab, openQueryTab, renderTree) để script lái được app. Giữ hook này.
+`test/run.js` dựng lại database nháp rồi chạy từng suite trong một tiến trình Electron riêng
+(`test/harness.js`). Harness mở cửa sổ thật, nạp `main.js` thật, rồi lái renderer qua
+`executeJavaScript`. Suite là module trong `test/suites/` xuất một hàm `chay(ctx)`.
 
-Hai điều bắt buộc khi kiểm chứng UI:
+`ctx` có: `run(js)` chạy JS trong renderer, `ok(điều_kiện, mô_tả)` ghi nhận một phép kiểm,
+`doiToi(biểu_thức, mô_tả)` chờ tới khi biểu thức đúng, `sleep`, `cfg`, `win`, `wc`.
+Tiện ích mở kết nối / mở tab nằm trong `test/tien-ich.js`.
 
-- **Luôn gắn `console-message`.** Lỗi cú pháp trong renderer làm chết toàn bộ `app.js` mà main
-  process không hề báo gì — nhìn stdout sẽ tưởng app chạy tốt.
-- **Đo số thô, đừng trả về boolean.** Một phép đo sai (ví dụ `offsetLeft` sai gốc toạ độ) sẽ
-  khiến assertion "PASS" trong khi tính năng vẫn hỏng. In số ra rồi kiểm tra tính nhất quán.
+Harness **tự động báo hỏng** khi renderer ghi ra lỗi console, khi tiến trình renderer chết,
+hoặc khi cửa sổ treo — kể cả khi mọi `ok()` đều đạt. Cần thế, vì lỗi cú pháp trong renderer
+giết cả `app.js` mà main process không hề báo gì.
 
-Máy này có sẵn MySQL 8.3 trong Docker (`daily-mysql`, cổng **3307**, `root`/`root123`):
+Cấu hình MySQL đọc từ biến môi trường, mặc định trỏ vào Docker của máy này:
+`TABLEU_TEST_HOST` (mặc định `127.0.1.1`), `_PORT`, `_USER`, `_PASS`, `_DB`, `_RO_DB`.
 
-- `daily_dev` — DB **thật** của người dùng, 132 bảng. **Chỉ đọc, tuyệt đối không ghi.**
-- `tableu_playground` — DB nháp để test ghi, có sẵn các ca khó: bảng PK thường
-  (`nguoi_dung`, có `ON UPDATE CURRENT_TIMESTAMP`), khoá ghép (`khoa_ghep`),
-  cột `STORED GENERATED` (`co_cot_sinh.thanh_tien`), bảng không PK (`khong_co_pk`),
-  và một view (`v_nguoi_dung`). Mọi test UPDATE/DELETE chạy ở đây.
-  Gieo lại bằng `DELETE FROM nguoi_dung` + `ALTER TABLE nguoi_dung AUTO_INCREMENT=1` + INSERT.
+### Ba cái bẫy khi viết test cho dự án này
+
+- **Đừng `sleep` một mốc cố định, hãy `doiToi`.** `.tabbar` có `scroll-behavior: smooth` và
+  `luuO()` vẽ lạc quan — cả hai đều làm mốc thời gian cố định nhấp nháy.
+- **Chờ đúng thứ cần chờ.** `loadData()` khi đang tải cũng đặt một `<div class="msg">`, nên chờ
+  `.msg` sẽ trả về lúc chưa có dữ liệu; phải chờ `tab.result`. Sau khi sửa ô, chờ chữ trong ô
+  là chưa đủ vì `luuO()` vẽ giá trị mới **trước** khi server xác nhận — phải chờ lớp
+  `cell-saving` tan.
+- **Kiểm tra giá trị thật, đừng kiểm tra "có hay không".** Đã ba lần một phép kiểm dạng
+  `length > 0` báo đạt trong khi tính năng sai (gợi ý trả về tên bảng thay vì tên cột vì con trỏ
+  đặt lệch một ký tự; `offsetLeft` sai gốc toạ độ). In số/chuỗi thật rồi so khớp chính xác.
 
 ## Kiến trúc
 
@@ -113,6 +108,21 @@ Chuyển ô bằng `Tab` phải `await` xong rồi mới tìm lại ô kế ti�
 Sự kiện của lưới dùng **uỷ quyền ở cấp `<table>`** (`attachEditing`), không gắn cho từng ô —
 một lưới 1000×54 là 54.000 ô.
 
+**Soạn thảo SQL.** Tab truy vấn dùng CodeMirror 5 nạp từ `renderer/vendor/codemirror/` bằng
+thẻ `<script>` thường trong `index.html` — **thứ tự nạp quan trọng**, core trước rồi mode rồi
+addon, và tất cả phải trước `app.js`. Vendor lại bằng `scripts/vendor-codemirror.sh`.
+
+**Đừng nâng lên CodeMirror 6**: nó là ESM nhiều gói, sẽ buộc phải thêm bundler và phá mất
+tính chất không-có-bước-build của dự án. CodeMirror 5 là UMD một file nên hợp với CSP `'self'`.
+
+Theme CodeMirror tên `tableu`, định nghĩa trong `styles.css` và **lấy màu từ biến CSS**, nên nó
+tự đổi theo sáng/tối mà không cần gọi `setOption('theme')` — đừng thêm lại cơ chế đổi theme.
+
+Gợi ý do addon `sql-hint` lo; nó nhận `hintOptions.tables` dạng `{tênBảng: [cột...]}`, lấy từ
+kênh `db:schema` và cache trong `schemaCache` theo khoá `${connId}::${database}`. Lưu ý
+sql-hint trả về **tên đầy đủ** `bảng.cột` chứ không phải tên cột trần — kiểm thử phải so đúng
+dạng đó.
+
 **Tab.** `state.tabs` giữ các object `{id, type: 'data'|'query', connId, database, pane, ...}`;
 mỗi tab tự sở hữu DOM pane của nó và có thể có `onFocus` / `onRefresh`. `renderTabs()` dựng lại
 toàn bộ thanh tab mỗi lần gọi.
@@ -136,6 +146,13 @@ Những chỗ này từng tốn thời gian, đừng giẫm lại:
 - **Định danh luôn đi qua `mysql.escapeId()`.** Riêng ô `WHERE` ở tab dữ liệu được ghép thẳng
   vào SQL — **cố ý**, để người dùng viết điều kiện tự do như Navicat, không phải lỗ hổng cần vá.
 - `multipleStatements: false`. Tab truy vấn chạy một câu mỗi lần; bôi đen để chọn câu cần chạy.
+- **Tab truy vấn phải có hai tầng chặn, đừng bỏ tầng nào.** `db:query` đọc kết quả bằng
+  stream rồi `destroy()` khi đủ `maxRows`; renderer còn cắt thêm theo **số ô** (`MAX_O_LUOI`)
+  vì 1.000 dòng của bảng 453 cột vẫn là 453.000 thẻ `<td>`. Bỏ một trong hai là
+  `SELECT * FROM <bảng lớn>` treo cứng cửa sổ — đã từng xảy ra.
+- **`.tabbar` có `scroll-behavior: smooth`**, nên sau khi đổi vị trí cuộn phải đợi animation
+  xong mới đo được. Test dùng `sleep` cố định rất dễ nhấp nháy — hãy chờ tới khi giá trị
+  ổn định thay vì chờ một mốc thời gian.
 
 ## Đóng gói
 

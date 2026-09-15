@@ -393,21 +393,68 @@ handle('db:rows', async (connId, database, table, opts = {}) => {
   };
 });
 
-handle('db:query', async (connId, database, sql) => {
+// Doc ket qua theo dong va DUNG han khi du `max`.
+//
+// Truoc day cho `pool.query` gom ca ket qua vao mang roi tra ve. Mot cau
+// `SELECT * FROM daily` (161.608 dong x 54 cot) lam treo cung cua so: main
+// process phai dung 8,7 trieu chuoi, day het qua IPC, roi renderer dung tung
+// ay the <td>. Stream + destroy() cat o 1.001 dong het 33ms thay vi doc het
+// mat 1,2 giay, va bo nho giu nguyen muc thap.
+function truyVanCoGioiHan(pool, sql, max) {
+  return new Promise((resolve, reject) => {
+    const rows = [];
+    let fields = null;
+    let biCat = false;
+    let xong = false;
+    const ket = (fn, v) => { if (!xong) { xong = true; fn(v); } };
+
+    const stream = pool.pool.query({ sql, rowsAsArray: true }).stream();
+    stream.on('fields', (f) => { fields = f; });
+    stream.on('data', (row) => {
+      if (rows.length < max) rows.push(row);
+      else if (!biCat) { biCat = true; stream.destroy(); }
+    });
+    stream.on('error', (e) => ket(reject, e));
+    stream.on('close', () => ket(resolve, { rows, fields, biCat }));
+  });
+}
+
+handle('db:query', async (connId, database, sql, maxRows) => {
   const pool = await getPool(connId, database || null);
+  const gioiHan = Math.min(Math.max(Number(maxRows) || 1000, 1), 50000);
   const started = Date.now();
-  const [result, fields] = await pool.query({ sql, rowsAsArray: true });
+  const { rows, fields, biCat } = await truyVanCoGioiHan(pool, sql, gioiHan);
   const elapsed = Date.now() - started;
-  if (Array.isArray(result)) {
-    return { kind: 'rows', ...shapeResult(result, fields), elapsed };
+
+  // Khong co `fields` nghia la cau lenh khong tra ve bang ket qua;
+  // khi do rows[0] la ResultSetHeader.
+  if (!fields) {
+    const h = rows[0] || {};
+    return {
+      kind: 'ok',
+      affectedRows: h.affectedRows ?? 0,
+      insertId: h.insertId ? String(h.insertId) : null,
+      info: h.info || '',
+      elapsed,
+    };
   }
-  return {
-    kind: 'ok',
-    affectedRows: result.affectedRows ?? 0,
-    insertId: result.insertId ? String(result.insertId) : null,
-    info: result.info || '',
-    elapsed,
-  };
+  return { kind: 'rows', ...shapeResult(rows, fields), elapsed, biCat, gioiHan };
+});
+
+// Danh sach bang + cot cua ca database, dung cho goi y trong tab truy van.
+// Mot luot query cho ca schema, khong lap qua tung bang.
+handle('db:schema', async (connId, database) => {
+  const pool = await getPool(connId, database);
+  const [rows] = await pool.query(
+    `SELECT TABLE_NAME AS t, COLUMN_NAME AS c
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = ?
+      ORDER BY TABLE_NAME, ORDINAL_POSITION`,
+    [database],
+  );
+  const tables = {};
+  for (const r of rows) (tables[r.t] || (tables[r.t] = [])).push(r.c);
+  return tables;
 });
 
 handle('db:updateCell', async (connId, database, table, keyValues, column, value) => {
