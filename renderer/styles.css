@@ -455,6 +455,29 @@ html[data-theme="dark"] { --cm-str: #6fc48f; }
 .cm-s-tableu .cm-variable-2 { color: var(--c-json); }   /* ten bang/cot sau khi quote */
 .cm-s-tableu .cm-error    { color: var(--danger); }
 
+/* ---- o loc WHERE: CodeMirror mot dong nam trong thanh cong cu ---- */
+.where-wrap {
+  flex: 1; min-width: 120px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.where-wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.CodeMirror.cm-s-tableu-inline {
+  height: 32px; line-height: 30px;
+  font: 13px/30px var(--font-mono);
+  background: transparent;
+}
+.cm-s-tableu-inline .CodeMirror-lines { padding: 0; }
+.cm-s-tableu-inline .CodeMirror-line { padding: 0 10px; }
+.cm-s-tableu-inline .CodeMirror-scroll { overflow: hidden !important; }
+.cm-s-tableu-inline .CodeMirror-activeline-background { background: transparent; }
+.cm-s-tableu-inline .CodeMirror-cursor { border-left-width: 1.5px; }
+
 /* ---- danh sach goi y ---- */
 .CodeMirror-hints {
   z-index: 200; padding: 4px; max-height: 260px;

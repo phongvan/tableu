@@ -89,11 +89,24 @@ Trước khi phát hành cho người khác, sửa `homepage` trong `package.jso
 | Khu vực | Có gì |
 |---|---|
 | Cây bên trái | Nhiều kết nối · database · bảng/view · số dòng ước lượng · ô lọc tên bảng |
-| Tab dữ liệu | Lưới cuộn với header dính, sắp xếp bằng cách bấm tên cột, phân trang 100–1000 dòng, ô `WHERE` tự do, **sửa ô tại chỗ**, xóa dòng, xuất CSV |
+| Tab dữ liệu | Lưới cuộn với header dính, sắp xếp bằng cách bấm tên cột, phân trang 100–1000 dòng, ô `WHERE` **có gợi ý tên cột**, **sửa ô tại chỗ**, xóa dòng, xuất CSV |
 | Tab cấu trúc | Danh sách cột (kiểu, NULL, khóa, mặc định, ghi chú) + chỉ mục |
 | Tab DDL | `SHOW CREATE TABLE` |
 | Tab truy vấn | Soạn SQL **có tô màu cú pháp và gợi ý tên bảng/cột**, `Ctrl+Enter` để chạy, bôi đen để chỉ chạy phần chọn, **giới hạn số dòng trả về**, xuất CSV |
 | Khác | Giao diện sáng/tối, menu chuột phải, kéo đổi rộng cây/cao ô soạn thảo |
+
+## Ô lọc WHERE
+
+Gõ vào ô `WHERE` trên thanh công cụ để lọc, `Enter` hoặc nút **Lọc** để áp dụng.
+
+Ô này gợi ý **chỉ tên cột của đúng bảng đang mở** — không lẫn bảng khác, không lẫn từ khóa SQL.
+Gõ `appr` trong bảng `approval_requests` ra `approved_by` và `approved_at`, thế thôi.
+`Ctrl+Space` để gọi gợi ý thủ công. Nội dung cũng được tô màu cú pháp.
+
+Danh sách cột lấy thẳng từ kết quả vừa hiển thị nên không tốn thêm truy vấn nào, và tự đổi
+theo khi bạn chuyển sang bảng khác.
+
+Nội dung ô luôn nằm trên một dòng — dán văn bản nhiều dòng vào sẽ được gộp lại.
 
 ## Sửa dữ liệu trên lưới
 

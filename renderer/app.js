@@ -715,9 +715,35 @@ function openDataTab(conn, database, table, initialView) {
   const bar = el('div', 'pane-toolbar');
   const btnRefresh = el('button', 'btn ghost', '⟳');
   btnRefresh.title = 'Làm mới (F5)';
-  const where = el('input', 'input where');
-  where.type = 'text';
-  where.placeholder = 'WHERE  ví dụ: status = 1 AND name LIKE \'%an%\'';
+  // O loc dung CodeMirror mot dong de co to mau cu phap va goi y ten cot.
+  const whereWrap = el('div', 'where-wrap');
+  const whereCm = CodeMirror(whereWrap, {
+    value: '',
+    mode: 'text/x-mysql',
+    theme: 'tableu tableu-inline',
+    lineNumbers: false,
+    lineWrapping: false,
+    scrollbarStyle: 'null',
+    matchBrackets: true,
+    autoCloseBrackets: true,
+    placeholder: "WHERE  ví dụ: status = 1 AND name LIKE '%an%'",
+    extraKeys: {
+      Enter: () => btnApply.onclick(),          // mot dong: Enter la ap dung, khong xuong dong
+      'Ctrl-Enter': () => btnApply.onclick(),
+      'Ctrl-Space': (c) => c.showHint({ completeSingle: false }),
+      Tab: false,                                // de Tab van di chuyen tieu diem
+    },
+  });
+  whereCm.setSize('100%', 32);
+  // chan moi cach xuong dong (dan, Shift+Enter, ...)
+  whereCm.on('beforeChange', (_c, ch) => {
+    if (ch.text.length > 1) ch.update(ch.from, ch.to, [ch.text.join(' ')]);
+  });
+  whereCm.on('inputRead', (_c, ch) => {
+    if (ch.origin !== '+input' || !/[\w.]/.test(ch.text[0] || '')) return;
+    if (whereCm.state.completionActive) return;
+    whereCm.showHint({ completeSingle: false });
+  });
   const btnApply = el('button', 'btn', 'Lọc');
   const sel = el('select', 'input');
   for (const n of [100, 200, 500, 1000]) {
@@ -730,7 +756,7 @@ function openDataTab(conn, database, table, initialView) {
   btnCsv.title = 'Xuất kết quả hiện tại ra CSV';
   const badge = el('span', 'badge-ro', '');
   badge.hidden = true;
-  bar.append(btnRefresh, el('div', 'tb-sep'), where, btnApply, el('div', 'tb-sep'), sel, btnCsv, badge);
+  bar.append(btnRefresh, el('div', 'tb-sep'), whereWrap, btnApply, el('div', 'tb-sep'), sel, btnCsv, badge);
   pane.appendChild(bar);
 
   const body = el('div', 'grid-wrap');
@@ -769,6 +795,15 @@ function openDataTab(conn, database, table, initialView) {
       const r = unwrap(await api.db.rows(conn.id, database, table, tab.q));
       tab.result = r;
       const meta = r.meta || {};
+
+      // Goi y trong o loc: CHI cot cua bang dang mo. Ten cot lay thang tu ket
+      // qua vua ve nen khong ton them mot vong hoi database nao.
+      whereCm.setOption('hintOptions', {
+        hint: hintChiCot,
+        tables: { [table]: r.columns.map((c) => c.name) },
+        defaultTable: table,
+        disableKeywords: true,   // chi ten cot, khong lan tu khoa SQL
+      });
 
       badge.hidden = !!meta.suaDuoc;
       badge.textContent = 'chỉ đọc';
@@ -873,8 +908,7 @@ function openDataTab(conn, database, table, initialView) {
   }
 
   btnRefresh.onclick = () => tab.showView(tab.view);
-  btnApply.onclick = () => { tab.q.where = where.value; tab.q.offset = 0; loadData(); };
-  where.onkeydown = (e) => { if (e.key === 'Enter') btnApply.onclick(); };
+  btnApply.onclick = () => { tab.q.where = whereCm.getValue().trim(); tab.q.offset = 0; loadData(); };
   sel.onchange = () => { tab.q.limit = Number(sel.value); tab.q.offset = 0; loadData(); };
   btnCsv.onclick = () => exportCsv(`${table}.csv`, tab.result);
   bFirst.onclick = () => { tab.q.offset = 0; loadData(); };
@@ -886,14 +920,29 @@ function openDataTab(conn, database, table, initialView) {
     loadData();
   };
   tab.onRefresh = () => tab.showView(tab.view);
+  tab.onFocus = () => whereCm.refresh();   // CodeMirror ve sai neu bi an luc dung
 
   addTab(tab);
   tab.showView(tab.view);
+  whereCm.refresh();
 }
 
 /* -------------------------------------------------------- query tab */
 
 const schemaCache = new Map();
+
+// O loc chi nen goi y TEN COT. sql-hint mac dinh con chen ca ten bang (vi
+// bang do nam trong hintOptions.tables), nen loc bo sau khi no tra ve.
+function hintChiCot(cm, options) {
+  const kq = CodeMirror.hint.sql(cm, options);
+  if (!kq || !kq.list) return kq;
+  const tenBang = new Set(Object.keys(options.tables || {}).map((t) => t.toLowerCase()));
+  kq.list = kq.list.filter((x) => {
+    const chu = typeof x === 'string' ? x : x.text;
+    return !tenBang.has(String(chu).toLowerCase());
+  });
+  return kq;
+}
 
 // Do tren bang 453 cot: ve luoi ton ~1 giay cho moi 45.000 the <td>
 // (60k o = 1,4s | 120k = 2,7s | 300k = 6,2s). Chon 120.000 de ca xau nhat

@@ -118,10 +118,24 @@ tính chất không-có-bước-build của dự án. CodeMirror 5 là UMD một
 Theme CodeMirror tên `tableu`, định nghĩa trong `styles.css` và **lấy màu từ biến CSS**, nên nó
 tự đổi theo sáng/tối mà không cần gọi `setOption('theme')` — đừng thêm lại cơ chế đổi theme.
 
-Gợi ý do addon `sql-hint` lo; nó nhận `hintOptions.tables` dạng `{tênBảng: [cột...]}`, lấy từ
-kênh `db:schema` và cache trong `schemaCache` theo khoá `${connId}::${database}`. Lưu ý
+Gợi ý do addon `sql-hint` lo; nó nhận `hintOptions.tables` dạng `{tênBảng: [cột...]}`. Lưu ý
 sql-hint trả về **tên đầy đủ** `bảng.cột` chứ không phải tên cột trần — kiểm thử phải so đúng
 dạng đó.
+
+Có **hai editor với hai phạm vi gợi ý khác nhau**:
+
+| | Tab truy vấn | Ô lọc WHERE (tab dữ liệu) |
+|---|---|---|
+| Nguồn | kênh `db:schema`, cache trong `schemaCache` theo `${connId}::${database}` | `r.columns` của kết quả vừa vẽ, không tốn truy vấn thêm |
+| Phạm vi | mọi bảng trong database | đúng một bảng đang mở |
+| Từ khóa SQL | có | không (`disableKeywords: true`) |
+| Tên bảng | có | không — lọc bỏ bằng `hintChiCot()` |
+
+`hintChiCot()` cần thiết vì `defaultTable` buộc bảng đó phải nằm trong `tables`, mà khi đã nằm
+trong đó thì sql-hint cũng đem tên bảng ra gợi ý. Nó bọc `CodeMirror.hint.sql` rồi lọc lại.
+
+Ô lọc là CodeMirror một dòng (`theme: 'tableu tableu-inline'`, `scrollbarStyle: 'null'`), có
+`beforeChange` gộp mọi xuống dòng thành dấu cách, và `Enter` được ánh xạ sang nút Lọc.
 
 **Tab.** `state.tabs` giữ các object `{id, type: 'data'|'query', connId, database, pane, ...}`;
 mỗi tab tự sở hữu DOM pane của nó và có thể có `onFocus` / `onRefresh`. `renderTabs()` dựng lại
