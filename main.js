@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -71,6 +71,12 @@ function buildMenu() {
         { type: 'separator' },
         { role: 'toggleDevTools', label: 'Công cụ nhà phát triển' },
         { role: 'reload', label: 'Tải lại' },
+      ],
+    },
+    {
+      label: 'Trợ giúp',
+      submenu: [
+        { label: 'Giới thiệu TableU', click: () => send('menu:about') },
       ],
     },
   ]);
@@ -247,6 +253,41 @@ function handle(channel, fn) {
     }
   });
 }
+
+handle('app:info', async () => {
+  // Doc tu package.json chu khong ghi cung: doi ten/email/phien ban o mot cho.
+  // package.json nam trong build.files nen van co mat trong ban dong goi (asar).
+  const pkg = require('./package.json');
+  const tacGia = typeof pkg.author === 'string' ? { name: pkg.author } : (pkg.author || {});
+  return {
+    // Khi dong goi, electron-builder ghi productName ra goc package.json;
+    // luc dev thi no con nam trong khoi build, nen phai do ca hai cho.
+    ten: pkg.productName || (pkg.build && pkg.build.productName) || app.getName(),
+    // Doc thang tu package.json, khong dung app.getVersion(): khi entry point
+    // khong nam canh package.json (vi du harness test) thi ham do tra ve
+    // phien ban cua chinh Electron.
+    phienBan: pkg.version || app.getVersion(),
+    moTa: pkg.description || '',
+    tacGia: tacGia.name || '',
+    email: tacGia.email || '',
+    giayPhep: pkg.license || '',
+  };
+});
+
+// Mo lien ket bang ung dung ngoai. CSP cua trang la default-src 'none' nen
+// renderer khong tu dieu huong mailto: duoc. Chan giao thuc de openExternal
+// khong tro thanh cho thuc thi tuy y.
+const GIAO_THUC_CHO_PHEP = new Set(['mailto:', 'https:']);
+
+handle('app:openExternal', async (url) => {
+  let u;
+  try { u = new URL(String(url)); } catch { throw new Error('Liên kết không hợp lệ.'); }
+  if (!GIAO_THUC_CHO_PHEP.has(u.protocol)) {
+    throw new Error(`Không mở giao thức ${u.protocol}`);
+  }
+  await shell.openExternal(u.href);
+  return true;
+});
 
 handle('conn:list', async () => loadConnections().map((c) => ({ ...c, password: c.password ? '••••' : '' })));
 

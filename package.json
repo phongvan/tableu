@@ -1,18 +1,22 @@
 {
   "name": "tableu",
-  "version": "0.1.0",
-  "description": "Trinh xem va truy van MySQL don gian cho Ubuntu",
+  "productName": "TableU",
+  "version": "1.0.1",
+  "description": "Trình xem bảng và chạy truy vấn MySQL, gọn nhẹ cho Linux",
   "main": "main.js",
-  "author": "tinhtn",
+  "author": {
+    "name": "tinhtn",
+    "email": "tinh.icolor@gmail.com"
+  },
   "license": "MIT",
   "scripts": {
     "start": "ELECTRON_RUN_AS_NODE= electron .",
     "dev": "ELECTRON_RUN_AS_NODE= electron . --enable-logging",
     "test": "node test/run.js",
     "pack": "electron-builder --linux dir",
-    "dist:deb": "npm run pack && bash scripts/build-deb.sh",
-    "dist:appimage": "electron-builder --linux AppImage",
-    "dist": "npm run dist:appimage && npm run dist:deb"
+    "dist:deb": "node scripts/dong-goi.js deb",
+    "dist:appimage": "node scripts/dong-goi.js appimage",
+    "dist": "node scripts/dong-goi.js all"
   },
   "dependencies": {
     "mysql2": "^3.11.5"

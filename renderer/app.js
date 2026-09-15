@@ -1203,6 +1203,34 @@ api.onMenu('menu:refresh', () => {
   if (active && active.onRefresh) active.onRefresh();
 });
 
+/* ----------------------------------------------------------- giới thiệu */
+
+const aboutDlg = $('#about-dialog');
+$('#about-dong').onclick = () => aboutDlg.close();
+
+async function moGioiThieu() {
+  try {
+    const t = unwrap(await api.appInfo());
+    $('#about-ten').textContent = t.ten;
+    $('#about-phien-ban').textContent = t.phienBan ? `v${t.phienBan}` : '';
+    $('#about-mo-ta').textContent = t.moTa;
+    $('#about-tac-gia').textContent = t.tacGia || '—';
+    $('#about-giay-phep').textContent = t.giayPhep || '—';
+
+    const mail = $('#about-email');
+    mail.textContent = t.email || '—';
+    mail.onclick = (e) => {
+      e.preventDefault();
+      if (t.email) api.moLienKet(`mailto:${t.email}`);
+    };
+    if (!aboutDlg.open) aboutDlg.showModal();
+  } catch (e) {
+    status(errText(e), true);
+  }
+}
+
+api.onMenu('menu:about', moGioiThieu);
+
 /* --------------------------------------------------------------- boot */
 
 reloadConnections().then(() => {
@@ -1210,6 +1238,6 @@ reloadConnections().then(() => {
 });
 
 /* Hook gỡ lỗi: chỉ dùng từ DevTools (Ctrl+Shift+I). */
-window.__tableu = { state, reloadConnections, toggleConn, toggleDb, openDataTab, openQueryTab, renderTree };
+window.__tableu = { state, reloadConnections, toggleConn, toggleDb, openDataTab, openQueryTab, renderTree, moGioiThieu };
 
 })();

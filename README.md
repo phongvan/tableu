@@ -27,10 +27,23 @@ Test mở cửa sổ thật và thao tác như người dùng. Mọi phép ghi c
 ## Đóng gói
 
 ```bash
-npm run dist            # tạo cả .deb và .AppImage trong dist/
-npm run dist:deb        # chỉ .deb
-npm run dist:appimage   # chỉ .AppImage
+npm run dist                  # cả .deb và .AppImage, dùng version hiện tại
+npm run dist:deb              # chỉ .deb
+npm run dist:appimage         # chỉ .AppImage
+
+npm run dist:deb -- 0.2.0     # đặt version 0.2.0 rồi build
+npm run dist:deb -- patch     # 0.1.0 -> 0.1.1 rồi build
+npm run dist:deb -- minor     # 0.1.0 -> 0.2.0
+npm run dist:deb -- major     # 0.1.0 -> 1.0.0
 ```
+
+Version truyền vào được **ghi thẳng vào `package.json`** (và `package-lock.json`) trước khi
+build, chứ không chỉ đổi tên tệp. Cần thế vì version còn nằm ở hai chỗ khác bên trong gói:
+mục `Version:` của `DEBIAN/control`, và hộp thoại Giới thiệu trong app — cả hai đều đọc từ
+`package.json`. Nếu chỉ đổi tên tệp thì bản `.deb` tên `0.2.0` mà bên trong vẫn báo `0.1.0`.
+
+Mỗi version cho ra một tệp riêng nên bản cũ không bị ghi đè. Build lại đúng version đã có
+thì script báo trước là sẽ ghi đè.
 
 Kết quả:
 
@@ -94,6 +107,7 @@ Trước khi phát hành cho người khác, sửa `homepage` trong `package.jso
 | Tab DDL | `SHOW CREATE TABLE` |
 | Tab truy vấn | Soạn SQL **có tô màu cú pháp và gợi ý tên bảng/cột**, `Ctrl+Enter` để chạy, bôi đen để chỉ chạy phần chọn, **giới hạn số dòng trả về**, xuất CSV |
 | Khác | Giao diện sáng/tối, menu chuột phải, kéo đổi rộng cây/cao ô soạn thảo |
+| Trợ giúp → Giới thiệu | Tên app, phiên bản, tác giả, email, giấy phép |
 
 ## Ô lọc WHERE
 

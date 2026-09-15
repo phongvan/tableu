@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('api', {
     deleteRow: (connId, database, table, keyValues) =>
       invoke('db:deleteRow', connId, database, table, keyValues),
   },
+  appInfo: () => invoke('app:info'),
+  moLienKet: (url) => invoke('app:openExternal', url),
   exportCsv: (name, csv) => invoke('export:csv', name, csv),
   onMenu: (channel, cb) => {
     const listener = () => cb();

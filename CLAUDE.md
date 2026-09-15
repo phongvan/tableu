@@ -160,6 +160,13 @@ Những chỗ này từng tốn thời gian, đừng giẫm lại:
 - **Định danh luôn đi qua `mysql.escapeId()`.** Riêng ô `WHERE` ở tab dữ liệu được ghép thẳng
   vào SQL — **cố ý**, để người dùng viết điều kiện tự do như Navicat, không phải lỗ hổng cần vá.
 - `multipleStatements: false`. Tab truy vấn chạy một câu mỗi lần; bôi đen để chọn câu cần chạy.
+- **Đừng dùng `app.getVersion()`.** Khi entry point không nằm cạnh `package.json` (ví dụ
+  `test/harness.js`) thì hàm này trả về **phiên bản Electron**, không phải phiên bản app.
+  Hộp Giới thiệu đọc thẳng `pkg.version`. Tương tự, `productName` chỉ nằm trong khối `build`
+  lúc dev và được electron-builder ghi ra gốc khi đóng gói, nên phải dò cả hai chỗ.
+- **`shell.openExternal` luôn phải lọc giao thức.** Kênh `app:openExternal` chỉ cho `mailto:`
+  và `https:` — cần thiết vì CSP `default-src 'none'` chặn renderer tự điều hướng, nên mọi
+  liên kết ra ngoài đều đi qua kênh này.
 - **Tab truy vấn phải có hai tầng chặn, đừng bỏ tầng nào.** `db:query` đọc kết quả bằng
   stream rồi `destroy()` khi đủ `maxRows`; renderer còn cắt thêm theo **số ô** (`MAX_O_LUOI`)
   vì 1.000 dòng của bảng 453 cột vẫn là 453.000 thẻ `<td>`. Bỏ một trong hai là
@@ -170,6 +177,17 @@ Những chỗ này từng tốn thời gian, đừng giẫm lại:
 
 ## Đóng gói
 
+- **Version đi qua [scripts/dong-goi.js](scripts/dong-goi.js)**, không sửa tay `package.json`.
+  `npm run dist:deb -- 0.2.0` (hoặc `patch`/`minor`/`major`) ghi version vào `package.json`
+  **trước khi** build, vì version còn nằm trong `DEBIAN/control` và hộp thoại Giới thiệu —
+  cả hai đọc từ `package.json`. Đổi mỗi tên tệp sẽ cho ra gói nói dối về version của chính nó.
+- **`productName` phải nằm ở GỐC `package.json`, không chỉ trong khối `build`.**
+  electron-builder **xoá cả khối `build`** khỏi `package.json` khi đóng gói vào asar và không
+  tự chép `productName` ra gốc. Chỉ để trong `build` thì bản cài hiện tên `tableu` viết thường.
+  Lỗi này không lộ ra khi chạy `npm start` hay `npm test` — phải mở asar ra xem mới thấy.
+- **Đừng chạy `npx --prefix <thư-mục-dự-án> asar extract-file …`.** `--prefix` đổi cwd sang
+  thư mục đó, nên tệp trích ra sẽ **ghi đè tệp cùng tên trong dự án** — đã một lần nuốt mất
+  `package.json`. Trích asar thì `cd` sang thư mục tạm rồi gọi thẳng `node_modules/.bin/asar`.
 - **`.deb` do [scripts/build-deb.sh](scripts/build-deb.sh) dựng bằng `dpkg-deb`**, không phải
   electron-builder. electron-builder gọi `fpm`, mà `fpm` cần lệnh `ar` trong gói `binutils` —
   máy này chưa cài. `build.linux.target` trong `package.json` vì thế chỉ còn AppImage.
