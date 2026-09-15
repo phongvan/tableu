@@ -189,6 +189,53 @@ function shapeResult(rows, fields) {
   return { columns: cols, rows: data };
 }
 
+/* ------------------------------------------------------- sua du lieu */
+
+// Cot sinh tu bieu thuc thi MySQL cam UPDATE. Luu y phan biet voi
+// DEFAULT_GENERATED (vi du `ON UPDATE CURRENT_TIMESTAMP`) — cai do van sua duoc.
+const GENERATED = /\b(VIRTUAL|STORED) GENERATED\b/i;
+
+async function tableMeta(pool, table) {
+  const [cols] = await pool.query(`SHOW FULL COLUMNS FROM ${mysql.escapeId(table)}`);
+  return {
+    fields: cols.map((c) => c.Field),
+    pk: cols.filter((c) => c.Key === 'PRI').map((c) => c.Field),
+    nullable: cols.filter((c) => c.Null === 'YES').map((c) => c.Field),
+    generated: cols.filter((c) => GENERATED.test(c.Extra || '')).map((c) => c.Field),
+    binaryPk: cols.some((c) => c.Key === 'PRI' && /blob|binary/i.test(c.Type)),
+  };
+}
+
+// Menh de WHERE dinh vi dung mot dong. Ten cot khoa LUON do server tu doc ra tu
+// SHOW FULL COLUMNS — client chi gui gia tri. Neu de client gui ca ten cot thi
+// mot loi phia renderer co the bien thanh UPDATE quet ca bang.
+function pkWhere(meta, keyValues) {
+  if (!meta.pk.length) {
+    throw new Error('Bảng không có khóa chính nên không xác định được dòng cần sửa.');
+  }
+  if (meta.binaryPk) {
+    throw new Error('Khóa chính kiểu nhị phân, chưa hỗ trợ sửa trên lưới.');
+  }
+  if (!Array.isArray(keyValues) || keyValues.length !== meta.pk.length) {
+    throw new Error('Thiếu giá trị khóa chính của dòng.');
+  }
+  return {
+    sql: meta.pk.map((k) => `${mysql.escapeId(k)} = ?`).join(' AND '),
+    params: keyValues,
+  };
+}
+
+// Doc lai nguyen dong sau khi ghi: trigger, cot sinh tu dong va
+// `ON UPDATE CURRENT_TIMESTAMP` deu co the doi nhung o khac.
+async function readRow(pool, table, where) {
+  const [rows, fields] = await pool.query({
+    sql: `SELECT * FROM ${mysql.escapeId(table)} WHERE ${where.sql} LIMIT 1`,
+    rowsAsArray: true,
+  }, where.params);
+  if (!rows.length) return null;
+  return shapeResult(rows, fields).rows[0];
+}
+
 /* ---------------------------------------------------------------- ipc */
 
 function handle(channel, fn) {
@@ -320,12 +367,30 @@ handle('db:rows', async (connId, database, table, opts = {}) => {
   });
   const elapsed = Date.now() - started;
 
+  // Khoa cua tung dong duoc gui rieng, khong lay lai tu o hien thi: cell() cat
+  // chuoi dai va doi Buffer thanh object, dung lai se dinh sai dong.
+  const meta = await tableMeta(pool, table);
+  const pkIdx = meta.pk.map((name) => fields.findIndex((f) => f.name === name));
+  const coDuKhoa = meta.pk.length > 0 && !pkIdx.includes(-1) && !meta.binaryPk;
+  const keys = coDuKhoa ? rows.map((r) => pkIdx.map((i) => r[i])) : null;
+
   let total = null;
   if (opts.count !== false) {
     const [cnt] = await pool.query(`SELECT COUNT(*) AS n ${from}`);
     total = Number(cnt[0].n);
   }
-  return { ...shapeResult(rows, fields), total, limit, offset, elapsed };
+  return {
+    ...shapeResult(rows, fields),
+    total, limit, offset, elapsed, keys,
+    meta: {
+      pk: meta.pk, generated: meta.generated, nullable: meta.nullable,
+      suaDuoc: coDuKhoa,
+      lyDo: coDuKhoa ? null
+        : meta.binaryPk ? 'khóa chính kiểu nhị phân'
+        : meta.pk.length ? 'thiếu cột khóa chính trong kết quả'
+        : 'bảng/view không có khóa chính',
+    },
+  };
 });
 
 handle('db:query', async (connId, database, sql) => {
@@ -343,6 +408,35 @@ handle('db:query', async (connId, database, sql) => {
     info: result.info || '',
     elapsed,
   };
+});
+
+handle('db:updateCell', async (connId, database, table, keyValues, column, value) => {
+  const pool = await getPool(connId, database);
+  const meta = await tableMeta(pool, table);
+  if (!meta.fields.includes(column)) throw new Error(`Không có cột ${column} trong bảng.`);
+  if (meta.generated.includes(column)) {
+    throw new Error(`Cột ${column} là cột sinh tự động, MySQL không cho sửa.`);
+  }
+  const where = pkWhere(meta, keyValues);
+
+  const [res] = await pool.query(
+    `UPDATE ${mysql.escapeId(table)} SET ${mysql.escapeId(column)} = ? WHERE ${where.sql} LIMIT 1`,
+    [value, ...where.params],
+  );
+  if (res.affectedRows === 0) {
+    throw new Error('Không khớp dòng nào — có thể dòng đã bị xóa hoặc khóa chính đã đổi.');
+  }
+  return { affectedRows: res.affectedRows, changed: res.changedRows, row: await readRow(pool, table, where) };
+});
+
+handle('db:deleteRow', async (connId, database, table, keyValues) => {
+  const pool = await getPool(connId, database);
+  const where = pkWhere(await tableMeta(pool, table), keyValues);
+  const [res] = await pool.query(
+    `DELETE FROM ${mysql.escapeId(table)} WHERE ${where.sql} LIMIT 1`, where.params,
+  );
+  if (res.affectedRows === 0) throw new Error('Không khớp dòng nào — có thể dòng đã bị xóa.');
+  return { affectedRows: res.affectedRows };
 });
 
 handle('db:disconnect', async (connId) => { await closePoolsFor(connId); return true; });

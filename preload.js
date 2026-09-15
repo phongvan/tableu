@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld('api', {
     ddl: (connId, database, table) => invoke('db:ddl', connId, database, table),
     rows: (connId, database, table, opts) => invoke('db:rows', connId, database, table, opts),
     query: (connId, database, sql) => invoke('db:query', connId, database, sql),
+    updateCell: (connId, database, table, keyValues, column, value) =>
+      invoke('db:updateCell', connId, database, table, keyValues, column, value),
+    deleteRow: (connId, database, table, keyValues) =>
+      invoke('db:deleteRow', connId, database, table, keyValues),
   },
   exportCsv: (name, csv) => invoke('export:csv', name, csv),
   onMenu: (channel, cb) => {

@@ -77,11 +77,46 @@ Trước khi phát hành cho người khác, sửa `homepage` trong `package.jso
 | Khu vực | Có gì |
 |---|---|
 | Cây bên trái | Nhiều kết nối · database · bảng/view · số dòng ước lượng · ô lọc tên bảng |
-| Tab dữ liệu | Lưới cuộn với header dính, sắp xếp bằng cách bấm tên cột, phân trang 100–1000 dòng, ô `WHERE` tự do, xuất CSV |
+| Tab dữ liệu | Lưới cuộn với header dính, sắp xếp bằng cách bấm tên cột, phân trang 100–1000 dòng, ô `WHERE` tự do, **sửa ô tại chỗ**, xóa dòng, xuất CSV |
 | Tab cấu trúc | Danh sách cột (kiểu, NULL, khóa, mặc định, ghi chú) + chỉ mục |
 | Tab DDL | `SHOW CREATE TABLE` |
 | Tab truy vấn | Soạn SQL, `Ctrl+Enter` để chạy, bôi đen để chỉ chạy phần chọn, xuất CSV |
 | Khác | Giao diện sáng/tối, menu chuột phải, kéo đổi rộng cây/cao ô soạn thảo |
+
+## Sửa dữ liệu trên lưới
+
+Nhấp đúp vào một ô để sửa.
+
+| Phím | Việc |
+|---|---|
+| `Enter` | Lưu |
+| `Esc` | Hủy, trả lại giá trị cũ |
+| `Tab` / `Shift+Tab` | Lưu rồi nhảy sang ô sửa được kế tiếp |
+
+Chuột phải vào ô có thêm: sao chép giá trị, **Đặt NULL**, và xóa dòng.
+
+Vài điểm đáng biết:
+
+- **Ô trống ≠ NULL.** Xóa hết chữ trong ô rồi Enter là lưu chuỗi rỗng. Muốn `NULL` thật thì
+  chuột phải → Đặt NULL. Mục này chỉ hiện với cột cho phép NULL.
+- **Sau khi lưu, cả dòng được đọc lại từ MySQL.** Nên `updated_at` kiểu
+  `ON UPDATE CURRENT_TIMESTAMP`, trigger, hay cột sinh tự động đều hiện ngay giá trị mới
+  mà không phải bấm làm mới.
+- **Định vị dòng bằng khóa chính**, câu lệnh là `UPDATE ... WHERE <khóa chính> = ? LIMIT 1`
+  tham số hóa. Tên cột khóa do phía main process tự đọc từ bảng, giao diện chỉ gửi giá trị.
+- Ô sẽ **nháy xanh** khi lưu xong, **nháy đỏ và trả lại giá trị cũ** nếu MySQL từ chối
+  (lỗi hiện ở thanh trạng thái dưới cùng).
+
+Không sửa được trong các trường hợp sau, khi đó thanh công cụ hiện huy hiệu `chỉ đọc`:
+
+| Trường hợp | Vì sao |
+|---|---|
+| View, hoặc bảng không có khóa chính | Không xác định được chính xác dòng nào |
+| Cột `STORED`/`VIRTUAL GENERATED` | MySQL không cho UPDATE cột sinh từ biểu thức |
+| Cột nhị phân (BLOB) | Chưa hỗ trợ |
+| Kết quả ở tab truy vấn | Không suy ra được bảng nguồn từ một câu SELECT bất kỳ |
+
+Chưa có: **thêm dòng mới**, hoàn tác, và sửa nhiều ô rồi lưu một lượt. Mỗi ô lưu ngay khi Enter.
 
 ## Giao diện
 

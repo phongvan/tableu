@@ -459,6 +459,33 @@ const KIND_LABEL = {
   bool: 'bit', enum: 'enum', blob: 'nhị phân',
 };
 
+function cellContent(td, v) {
+  td.textContent = '';
+  if (v === null) td.appendChild(el('span', 'null', 'NULL'));
+  else if (typeof v === 'object' && v.blob) td.appendChild(el('span', 'blob', v.blob));
+  else td.textContent = v;
+}
+
+// Gia tri tho de do vao o soan thao. NULL -> chuoi rong, nhung hai cai nay
+// khac nhau khi ghi xuong: xem commitEdit().
+function cellRaw(v) {
+  if (v === null) return '';
+  if (typeof v === 'object' && v.blob) return v.blob;
+  return String(v);
+}
+
+function fillRow(tr, row, columns, stt) {
+  tr.textContent = '';
+  tr.appendChild(el('td', 'rownum', String(stt)));
+  row.forEach((v, ci) => {
+    const col = columns[ci] || {};
+    const td = el('td', `k-${col.kind || 'text'}`);
+    td.dataset.c = String(ci);
+    cellContent(td, v);
+    tr.appendChild(td);
+  });
+}
+
 function renderGrid(container, result, opts = {}) {
   container.textContent = '';
   const table = el('table', 'grid');
@@ -485,23 +512,150 @@ function renderGrid(container, result, opts = {}) {
   const base = opts.offset || 0;
   result.rows.forEach((row, i) => {
     const tr = el('tr');
-    tr.appendChild(el('td', 'rownum', String(base + i + 1)));
-    row.forEach((v, ci) => {
-      const kind = (result.columns[ci] && result.columns[ci].kind) || 'text';
-      const td = el('td', `k-${kind}`);
-      if (v === null) td.appendChild(el('span', 'null', 'NULL'));
-      else if (typeof v === 'object' && v.blob) td.appendChild(el('span', 'blob', v.blob));
-      else td.textContent = v;
-      tr.appendChild(td);
-    });
+    tr.dataset.r = String(i);
+    fillRow(tr, row, result.columns, base + i + 1);
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
   container.appendChild(table);
 
+  if (opts.edit) attachEditing(table, result, opts.edit);
+
   if (result.rows.length === 0) {
     container.appendChild(el('div', 'msg dim', 'Không có dòng nào.'));
   }
+}
+
+/* ------------------------------------------------------- sửa ô trên lưới */
+
+// Uy quyen su kien o cap <table>: mot luoi 1000x54 la 54.000 o, gan listener
+// cho tung o se giet hieu nang.
+function attachEditing(table, result, edit) {
+  const viTri = (e) => {
+    const td = e.target.closest('td');
+    if (!td || td.classList.contains('rownum') || !table.contains(td)) return null;
+    const tr = td.parentElement;
+    const r = Number(tr.dataset.r);
+    const c = Number(td.dataset.c);
+    return Number.isInteger(r) && Number.isInteger(c) ? { td, tr, r, c } : null;
+  };
+
+  table.addEventListener('dblclick', (e) => {
+    const v = viTri(e);
+    if (!v) return;
+    const vi = edit.suaDuocCot(v.c);
+    if (vi !== true) { status(vi, true); return; }
+    beginEdit(v, result, edit);
+  });
+
+  table.addEventListener('contextmenu', (e) => {
+    const v = viTri(e);
+    if (!v) return;
+    e.preventDefault();
+    const col = result.columns[v.c];
+    const giaTri = result.rows[v.r][v.c];
+    const items = [
+      { label: 'Sao chép giá trị', run: () => navigator.clipboard.writeText(cellRaw(giaTri)) },
+      { label: 'Sao chép tên cột', run: () => navigator.clipboard.writeText(col.name) },
+    ];
+    if (edit.suaDuocCot(v.c) === true) {
+      items.push('-');
+      if (edit.choPhepNull(v.c)) {
+        items.push({ label: 'Đặt NULL', run: () => luuO(v, null, result, edit) });
+      }
+      items.push({ label: 'Sửa ô…', run: () => beginEdit(v, result, edit) });
+      if (edit.onDeleteRow) {
+        items.push('-');
+        items.push({ label: 'Xóa dòng này…', danger: true, run: () => edit.onDeleteRow(v.r) });
+      }
+    }
+    showMenu(e, items);
+  });
+}
+
+function beginEdit({ td, tr, r, c }, result, edit) {
+  if (td.querySelector('input')) return;
+  const cu = result.rows[r][c];
+  const rong = td.getBoundingClientRect().width;
+
+  td.classList.add('cell-editing');
+  td.textContent = '';
+  const input = el('input', 'cell-input');
+  input.type = 'text';
+  input.value = cellRaw(cu);
+  input.style.width = `${Math.max(rong - 22, 60)}px`;
+  td.appendChild(input);
+  input.focus();
+  input.select();
+
+  let xong = false;
+  // Tra ve promise: sau khi luu, luuO dung lai toan bo <td> cua dong,
+  // nen ai muon thao tac tiep phai doi xong roi tim lai o.
+  const dong = (moi) => {
+    if (xong) return Promise.resolve();
+    xong = true;
+    td.classList.remove('cell-editing');
+    if (moi === undefined) { cellContent(td, result.rows[r][c]); return Promise.resolve(); }
+    return luuO({ td, tr, r, c }, moi, result, edit);
+  };
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); dong(input.value); }
+    else if (e.key === 'Escape') { e.preventDefault(); dong(undefined); }
+    else if (e.key === 'Tab') {
+      e.preventDefault();
+      const huong = e.shiftKey ? -1 : 1;
+      dong(input.value).then(() => {
+        const tiep = timOKeTiep(tr, c, huong, result, edit);   // tim lai sau khi dong da ve lai
+        if (tiep) beginEdit(tiep, result, edit);
+      });
+    }
+  });
+  input.addEventListener('blur', () => dong(input.value));
+}
+
+function timOKeTiep(tr, c, huong, result, edit) {
+  for (let i = c + huong; i >= 0 && i < result.columns.length; i += huong) {
+    if (edit.suaDuocCot(i) === true) {
+      const td = tr.querySelector(`td[data-c="${i}"]`);
+      if (td) return { td, tr, r: Number(tr.dataset.r), c: i };
+    }
+  }
+  return null;
+}
+
+async function luuO({ td, tr, r, c }, moi, result, edit) {
+  const cu = result.rows[r][c];
+  // '' va NULL la hai thu khac nhau: chi dat NULL khi nguoi dung chon ro
+  if (moi !== null && cellRaw(cu) === moi) { cellContent(td, cu); return; }
+
+  td.classList.add('cell-saving');
+  cellContent(td, moi);
+  try {
+    const kq = await edit.onCommit(r, c, moi);
+    td.classList.remove('cell-saving');
+    if (kq && kq.row) {
+      // Server tra ve nguyen dong da doc lai — trigger hoac
+      // `ON UPDATE CURRENT_TIMESTAMP` co the doi cac o khac.
+      result.rows[r] = kq.row;
+      const stt = Number(tr.firstElementChild.textContent);
+      fillRow(tr, kq.row, result.columns, stt);
+      const moiTd = tr.querySelector(`td[data-c="${c}"]`);
+      if (moiTd) nhayO(moiTd, 'cell-saved');
+    } else {
+      nhayO(td, 'cell-saved');
+    }
+  } catch (err) {
+    td.classList.remove('cell-saving');
+    cellContent(td, cu);            // tra ve gia tri cu
+    nhayO(td, 'cell-error');
+    status(errText(err), true);
+  }
+}
+
+function nhayO(td, cls) {
+  td.classList.add(cls);
+  setTimeout(() => td.classList.remove(cls), 900);
 }
 
 function toCsv(result) {
@@ -574,7 +728,9 @@ function openDataTab(conn, database, table, initialView) {
   }
   const btnCsv = el('button', 'btn ghost', 'CSV');
   btnCsv.title = 'Xuất kết quả hiện tại ra CSV';
-  bar.append(btnRefresh, el('div', 'tb-sep'), where, btnApply, el('div', 'tb-sep'), sel, btnCsv);
+  const badge = el('span', 'badge-ro', '');
+  badge.hidden = true;
+  bar.append(btnRefresh, el('div', 'tb-sep'), where, btnApply, el('div', 'tb-sep'), sel, btnCsv, badge);
   pane.appendChild(bar);
 
   const body = el('div', 'grid-wrap');
@@ -612,6 +768,12 @@ function openDataTab(conn, database, table, initialView) {
     try {
       const r = unwrap(await api.db.rows(conn.id, database, table, tab.q));
       tab.result = r;
+      const meta = r.meta || {};
+
+      badge.hidden = !!meta.suaDuoc;
+      badge.textContent = 'chỉ đọc';
+      badge.title = `Không sửa được trên lưới: ${meta.lyDo || 'không rõ lý do'}.`;
+
       renderGrid(body, r, {
         offset: r.offset,
         sortBy: tab.q.orderBy,
@@ -621,6 +783,23 @@ function openDataTab(conn, database, table, initialView) {
           else { tab.q.orderBy = name; tab.q.orderDir = 'ASC'; }
           tab.q.offset = 0;
           loadData();
+        },
+        edit: {
+          suaDuocCot: (ci) => {
+            if (!meta.suaDuoc) return `Không sửa được trên lưới: ${meta.lyDo || 'không rõ lý do'}.`;
+            const col = r.columns[ci];
+            if (!col) return 'Không xác định được cột.';
+            if ((meta.generated || []).includes(col.name)) {
+              return `Cột ${col.name} là cột sinh tự động, MySQL không cho sửa.`;
+            }
+            if (col.kind === 'blob') return `Cột ${col.name} là dữ liệu nhị phân, chưa hỗ trợ sửa.`;
+            return true;
+          },
+          choPhepNull: (ci) => (meta.nullable || []).includes(r.columns[ci].name),
+          onCommit: async (ri, ci, giaTri) => unwrap(
+            await api.db.updateCell(conn.id, database, table, r.keys[ri], r.columns[ci].name, giaTri),
+          ),
+          onDeleteRow: meta.suaDuoc ? (ri) => xoaDong(r, ri) : null,
         },
       });
       const from = r.total === 0 ? 0 : r.offset + 1;
@@ -633,6 +812,19 @@ function openDataTab(conn, database, table, initialView) {
       body.textContent = '';
       body.appendChild(el('div', 'msg error', errText(e)));
       info.textContent = '';
+      status(errText(e), true);
+    }
+  }
+
+  async function xoaDong(r, ri) {
+    const moTaKhoa = (r.meta.pk || [])
+      .map((ten, i) => `${ten} = ${r.keys[ri][i]}`).join(', ');
+    if (!confirm(`Xóa vĩnh viễn dòng này khỏi ${table}?\n\n${moTaKhoa}\n\nKhông hoàn tác được.`)) return;
+    try {
+      unwrap(await api.db.deleteRow(conn.id, database, table, r.keys[ri]));
+      status(`Đã xóa 1 dòng khỏi ${database}.${table}`);
+      loadData();
+    } catch (e) {
       status(errText(e), true);
     }
   }
