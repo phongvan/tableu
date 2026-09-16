@@ -544,6 +544,58 @@ pre.ddl {
 .dialog-msg.error { color: var(--danger); }
 .dialog-msg.ok { color: var(--ok); }
 
+/* ---- hop thoai xuat / nhap SQL ---- */
+.dialog-sub { margin: -4px 0 2px; font-size: 13px; color: var(--text-dim); }
+.dialog .chk {
+  flex-direction: row; align-items: center; gap: 9px;
+  font-size: 13.5px; color: var(--text); font-weight: 400; cursor: pointer;
+}
+.dialog .chk input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.canh-bao-hop {
+  margin: 2px 0; padding: 10px 12px; font-size: 12.5px; line-height: 1.5;
+  color: var(--warn); background: var(--bg-alt);
+  border-left: 3px solid var(--warn); border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+
+.dialog.tien-do { width: 420px; padding: 22px; }
+.dialog.tien-do h3 { margin: 0 0 8px; font-size: 16px; }
+.progress-line {
+  margin: 0 0 12px; font: 12.5px var(--font-mono); color: var(--text-dim);
+  min-height: 34px; line-height: 1.45; overflow-wrap: anywhere;
+}
+.progress-track {
+  height: 7px; border-radius: 4px; background: var(--bg-sunken); overflow: hidden;
+}
+.progress-bar {
+  height: 100%; width: 0%; background: var(--accent);
+  border-radius: 4px; transition: width .18s ease-out;
+}
+.progress-bar.khong-xac-dinh {
+  width: 35%; animation: chay-qua-lai 1.1s ease-in-out infinite;
+}
+@keyframes chay-qua-lai {
+  0% { margin-left: 0; } 50% { margin-left: 65%; } 100% { margin-left: 0; }
+}
+
+/* ---- hop thoai ket qua xuat / nhap ---- */
+.dialog.ket-qua { width: 460px; }
+.kq-head { display: flex; align-items: center; gap: 12px; padding: 20px 22px 14px; }
+.kq-head h3 { margin: 0; font-size: 16px; }
+.kq-icon {
+  width: 30px; height: 30px; flex: 0 0 auto; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; color: #fff; background: var(--ok);
+}
+.kq-icon.hong { background: var(--danger); }
+.dialog.ket-qua .about-list { border-top: 1px solid var(--border); }
+.kq-loi {
+  margin: 0; padding: 12px 22px; max-height: 190px; overflow: auto;
+  font: 11.5px/1.5 var(--font-mono); color: var(--danger);
+  background: var(--danger-soft); white-space: pre-wrap; user-select: text;
+  border-bottom: 1px solid var(--border);
+}
+.dialog.ket-qua .dialog-actions { padding: 14px 22px 18px; margin: 0; }
+
 /* ---- hop thoai Gioi thieu ---- */
 .dialog.about { width: 400px; }
 .dialog.about .about-head {

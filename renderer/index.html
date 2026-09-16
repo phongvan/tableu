@@ -99,6 +99,57 @@
     </div>
   </dialog>
 
+  <dialog id="export-dialog" class="dialog">
+    <form method="dialog" id="export-form">
+      <h3 id="export-title">Xuất SQL</h3>
+      <p class="dialog-sub" id="export-sub"></p>
+      <label class="chk"><input type="checkbox" id="x-cau-truc" checked /> Cấu trúc (CREATE TABLE)</label>
+      <label class="chk"><input type="checkbox" id="x-du-lieu" checked /> Dữ liệu (INSERT)</label>
+      <label class="chk"><input type="checkbox" id="x-drop" checked /> Thêm DROP TABLE IF EXISTS</label>
+      <p class="dialog-msg" id="export-msg"></p>
+      <div class="dialog-actions">
+        <div class="spacer"></div>
+        <button type="button" class="btn ghost" id="export-huy">Hủy</button>
+        <button type="submit" class="btn primary">Chọn tệp…</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="import-dialog" class="dialog">
+    <form method="dialog" id="import-form">
+      <h3>Nhập từ tệp SQL</h3>
+      <p class="dialog-sub" id="import-sub"></p>
+      <p class="canh-bao-hop">⚠ Tệp SQL sẽ được chạy nguyên văn. Nếu nó có DROP hoặc TRUNCATE
+        thì dữ liệu hiện tại sẽ mất. Không hoàn tác được.</p>
+      <label class="chk"><input type="checkbox" id="n-bo-qua-loi" /> Bỏ qua câu lệnh lỗi và chạy tiếp</label>
+      <div class="dialog-actions">
+        <div class="spacer"></div>
+        <button type="button" class="btn ghost" id="import-huy">Hủy</button>
+        <button type="submit" class="btn primary">Chọn tệp…</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="ketqua-dialog" class="dialog ket-qua">
+    <div class="kq-head">
+      <span class="kq-icon" id="kq-icon">✓</span>
+      <h3 id="kq-title">Xong</h3>
+    </div>
+    <dl class="about-list" id="kq-list"></dl>
+    <pre class="kq-loi" id="kq-loi" hidden></pre>
+    <div class="dialog-actions">
+      <button type="button" class="btn ghost" id="kq-thu-muc" hidden>Mở thư mục chứa</button>
+      <div class="spacer"></div>
+      <button type="button" class="btn primary" id="kq-dong">Đóng</button>
+    </div>
+  </dialog>
+
+  <dialog id="progress-dialog" class="dialog tien-do">
+    <h3 id="progress-title">Đang xử lý</h3>
+    <p class="progress-line" id="progress-line">…</p>
+    <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+  </dialog>
+
   <div id="ctx-menu" class="ctx-menu" hidden></div>
 
   <!-- CodeMirror 5 (UMD, nap theo thu tu: core -> mode -> addon). Xem

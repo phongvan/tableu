@@ -26,6 +26,20 @@ contextBridge.exposeInMainWorld('api', {
     deleteRow: (connId, database, table, keyValues) =>
       invoke('db:deleteRow', connId, database, table, keyValues),
   },
+  sql: {
+    chonTepLuu: (database, bang) => invoke('sql:chonTepLuu', database, bang),
+    chonTepMo: (database) => invoke('sql:chonTepMo', database),
+    xuat: (connId, database, bang, opts, duongDan) =>
+      invoke('sql:export', connId, database, bang, opts, duongDan),
+    nhap: (connId, database, opts, duongDan) =>
+      invoke('sql:import', connId, database, opts, duongDan),
+  },
+  moThuMuc: (duongDan) => invoke('app:showInFolder', duongDan),
+  onTienDo: (cb) => {
+    const listener = (_e, data) => cb(data);
+    ipcRenderer.on('sql:progress', listener);
+    return () => ipcRenderer.removeListener('sql:progress', listener);
+  },
   appInfo: () => invoke('app:info'),
   moLienKet: (url) => invoke('app:openExternal', url),
   exportCsv: (name, csv) => invoke('export:csv', name, csv),

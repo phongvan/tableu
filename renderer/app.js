@@ -330,6 +330,9 @@ function dbMenu(e, conn, dbName) {
     { label: 'Tab truy vấn ở đây', run: () => openQueryTab(conn, dbName) },
     { label: 'Làm mới danh sách bảng', run: () => refreshDb(conn, dbName) },
     '-',
+    { label: 'Xuất database ra SQL…', run: () => moXuat(conn, dbName, null) },
+    { label: 'Nhập từ tệp SQL…', run: () => moNhap(conn, dbName) },
+    '-',
     { label: 'Sao chép tên', run: () => navigator.clipboard.writeText(dbName) },
   ]);
 }
@@ -340,6 +343,9 @@ function tableMenu(e, conn, dbName, table) {
     { label: 'Xem cấu trúc', run: () => openDataTab(conn, dbName, table, 'structure') },
     '-',
     { label: 'SELECT * trong tab query', run: () => openQueryTab(conn, dbName, `SELECT *\nFROM \`${table}\`\nLIMIT 200;`) },
+    '-',
+    { label: 'Xuất bảng ra SQL…', run: () => moXuat(conn, dbName, table) },
+    '-',
     { label: 'Sao chép tên bảng', run: () => navigator.clipboard.writeText(table) },
   ]);
 }
@@ -1203,6 +1209,212 @@ api.onMenu('menu:refresh', () => {
   if (active && active.onRefresh) active.onRefresh();
 });
 
+/* --------------------------------------------------------- nhập / xuất SQL */
+
+const xuatDlg = $('#export-dialog');
+const nhapDlg = $('#import-dialog');
+const tienDoDlg = $('#progress-dialog');
+let dangChay = false;
+
+function moTienDo(tieuDe) {
+  $('#progress-title').textContent = tieuDe;
+  $('#progress-line').textContent = 'Đang chuẩn bị…';
+  const bar = $('#progress-bar');
+  bar.style.width = '0%';
+  bar.classList.add('khong-xac-dinh');
+  if (!tienDoDlg.open) tienDoDlg.showModal();
+}
+
+function dongTienDo() {
+  if (tienDoDlg.open) tienDoDlg.close();
+}
+
+api.onTienDo((d) => {
+  if (!tienDoDlg.open) return;
+  const bar = $('#progress-bar');
+  const dong = [];
+  if (d.bang) dong.push(`${d.bang}  (${d.thuTu}/${d.tongBang})`);
+  if (d.viec === 'xuat' && d.tong) dong.push(`${fmtNum(d.xong)} / ${fmtNum(d.tong)} dòng`);
+  if (d.viec === 'nhap') {
+    dong.push(`${(d.xong / 1048576).toFixed(1)} / ${(d.tong / 1048576).toFixed(1)} MB`);
+  }
+  $('#progress-line').textContent = dong.join('\n') || 'Đang xử lý…';
+
+  if (d.tong > 0) {
+    bar.classList.remove('khong-xac-dinh');
+    bar.style.width = `${Math.min(100, Math.round((d.xong / d.tong) * 100))}%`;
+  }
+});
+
+function coTep(byte) {
+  if (byte < 1024) return `${byte} B`;
+  if (byte < 1048576) return `${(byte / 1024).toFixed(1)} KB`;
+  return `${(byte / 1048576).toFixed(1)} MB`;
+}
+
+const kqDlg = $('#ketqua-dialog');
+$('#kq-dong').onclick = () => kqDlg.close();
+
+// Bao ket qua bang hop thoai chu khong chi mot dong o thanh trang thai:
+// tac vu co the xong trong nua giay, mot dong chu xam 12px la khong ai thay.
+function moKetQua({ hong, tieuDe, muc, loi, tep }) {
+  $('#kq-icon').textContent = hong ? '!' : '✓';
+  $('#kq-icon').className = `kq-icon ${hong ? 'hong' : ''}`;
+  $('#kq-title').textContent = tieuDe;
+
+  const ds = $('#kq-list');
+  ds.textContent = '';
+  for (const [nhan, gt] of muc) {
+    ds.appendChild(el('dt', '', nhan));
+    ds.appendChild(el('dd', '', String(gt)));
+  }
+
+  const oLoi = $('#kq-loi');
+  oLoi.hidden = !loi;
+  if (loi) oLoi.textContent = loi;
+
+  const nut = $('#kq-thu-muc');
+  nut.hidden = !tep;
+  nut.onclick = async () => {
+    const r = await api.moThuMuc(tep);
+    if (!r.ok) status(r.error, true);
+  };
+
+  if (!kqDlg.open) kqDlg.showModal();
+}
+
+/* ---- xuất ---- */
+
+$('#export-huy').onclick = () => xuatDlg.close();
+
+function moXuat(conn, dbName, bang) {
+  if (dangChay) { status('Đang có tác vụ khác chạy', true); return; }
+  $('#export-title').textContent = bang ? `Xuất bảng ${bang}` : `Xuất database ${dbName}`;
+  $('#export-sub').textContent = bang
+    ? `Bảng ${dbName}.${bang}`
+    : `Toàn bộ bảng và view trong ${dbName}`;
+  $('#export-msg').textContent = '';
+  xuatDlg.dataset.conn = conn.id;
+  xuatDlg.dataset.db = dbName;
+  xuatDlg.dataset.bang = bang || '';
+  xuatDlg.showModal();
+}
+
+$('#export-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const opts = {
+    cauTruc: $('#x-cau-truc').checked,
+    duLieu: $('#x-du-lieu').checked,
+    themDrop: $('#x-drop').checked,
+  };
+  if (!opts.cauTruc && !opts.duLieu) {
+    $('#export-msg').textContent = 'Phải chọn ít nhất cấu trúc hoặc dữ liệu.';
+    $('#export-msg').className = 'dialog-msg error';
+    return;
+  }
+  const { conn, db, bang } = xuatDlg.dataset;
+  xuatDlg.close();
+
+  // Chon tep TRUOC, roi moi mo thanh tien do. Lam nguoc lai thi tien do bi
+  // hop chon tep cua he dieu hanh che khuat, va nguoi dung khong thay gi ca.
+  let duongDan;
+  try {
+    const c = unwrap(await api.sql.chonTepLuu(db, bang || null));
+    if (c.huy) { status('Đã hủy xuất'); return; }
+    duongDan = c.duongDan;
+  } catch (err) {
+    status(errText(err), true);
+    return;
+  }
+
+  dangChay = true;
+  moTienDo(bang ? `Đang xuất bảng ${bang}` : `Đang xuất database ${db}`);
+  try {
+    const r = unwrap(await api.sql.xuat(conn, db, bang || null, opts, duongDan));
+    dongTienDo();
+    moKetQua({
+      tieuDe: bang ? `Đã xuất bảng ${bang}` : `Đã xuất database ${db}`,
+      muc: [
+        ['Bảng', fmtNum(r.soBang) + (r.soView ? ` (và ${r.soView} view)` : '')],
+        ['Số dòng', fmtNum(r.soDong)],
+        ['Kích thước', coTep(r.kichThuoc)],
+        ['Thời gian', `${r.giay} giây`],
+        ['Tệp', r.duongDan],
+      ],
+      tep: r.duongDan,
+    });
+    status(`Đã xuất ${fmtNum(r.soDong)} dòng → ${r.duongDan}`);
+  } catch (err) {
+    dongTienDo();
+    moKetQua({ hong: true, tieuDe: 'Xuất không thành công', muc: [], loi: errText(err) });
+  } finally {
+    dangChay = false;
+  }
+});
+
+/* ---- nhập ---- */
+
+$('#import-huy').onclick = () => nhapDlg.close();
+
+function moNhap(conn, dbName) {
+  if (dangChay) { status('Đang có tác vụ khác chạy', true); return; }
+  $('#import-sub').textContent = `Chạy vào database ${dbName}`;
+  $('#n-bo-qua-loi').checked = false;
+  nhapDlg.dataset.conn = conn.id;
+  nhapDlg.dataset.db = dbName;
+  nhapDlg.showModal();
+}
+
+$('#import-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const { conn, db } = nhapDlg.dataset;
+  const boQuaLoi = $('#n-bo-qua-loi').checked;
+  nhapDlg.close();
+
+  let duongDan;
+  try {
+    const c = unwrap(await api.sql.chonTepMo(db));
+    if (c.huy) { status('Đã hủy nhập'); return; }
+    duongDan = c.duongDan;
+  } catch (err) {
+    status(errText(err), true);
+    return;
+  }
+
+  dangChay = true;
+  moTienDo(`Đang nhập vào ${db}`);
+  const napLaiCay = async () => {
+    // Bang moi tao chi hien sau khi nap lai cay
+    const c = state.connections.find((x) => x.id === conn);
+    if (c) await refreshDb(c, db);
+  };
+  try {
+    const r = unwrap(await api.sql.nhap(conn, db, { boQuaLoi }, duongDan));
+    dongTienDo();
+    await napLaiCay();
+    moKetQua({
+      hong: r.soLoi > 0,
+      tieuDe: r.soLoi ? `Nhập xong nhưng có ${fmtNum(r.soLoi)} câu lỗi` : `Đã nhập vào ${db}`,
+      muc: [
+        ['Câu lệnh', fmtNum(r.soCau)],
+        ['Lỗi', fmtNum(r.soLoi)],
+        ['Thời gian', `${r.giay} giây`],
+        ['Tệp', duongDan],
+      ],
+      loi: r.loi && r.loi.length
+        ? r.loi.map((x) => `#${x.thuTu}  ${x.loi}\n    ${x.cau}`).join('\n\n')
+        : null,
+    });
+    status(`Đã nhập ${fmtNum(r.soCau)} câu lệnh`, r.soLoi > 0);
+  } catch (err) {
+    dongTienDo();
+    await napLaiCay();   // co the da chay duoc mot phan truoc khi dung
+    moKetQua({ hong: true, tieuDe: 'Nhập không thành công', muc: [['Tệp', duongDan]], loi: errText(err) });
+  } finally {
+    dangChay = false;
+  }
+});
+
 /* ----------------------------------------------------------- giới thiệu */
 
 const aboutDlg = $('#about-dialog');
@@ -1238,6 +1450,6 @@ reloadConnections().then(() => {
 });
 
 /* Hook gỡ lỗi: chỉ dùng từ DevTools (Ctrl+Shift+I). */
-window.__tableu = { state, reloadConnections, toggleConn, toggleDb, openDataTab, openQueryTab, renderTree, moGioiThieu };
+window.__tableu = { state, reloadConnections, toggleConn, toggleDb, openDataTab, openQueryTab, renderTree, moGioiThieu, moXuat, moNhap };
 
 })();

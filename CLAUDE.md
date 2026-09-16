@@ -137,6 +137,43 @@ trong đó thì sql-hint cũng đem tên bảng ra gợi ý. Nó bọc `CodeMirr
 Ô lọc là CodeMirror một dòng (`theme: 'tableu tableu-inline'`, `scrollbarStyle: 'null'`), có
 `beforeChange` gộp mọi xuống dòng thành dấu cách, và `Enter` được ánh xạ sang nút Lọc.
 
+**Xuất / nhập SQL.** Hai module trong `lib/`, main.js chỉ lo hộp thoại chọn tệp và IPC.
+
+**Chọn tệp phải là kênh IPC RIÊNG** (`sql:chonTepLuu` / `sql:chonTepMo`), tách khỏi kênh làm
+việc. Lúc đầu hộp thoại chọn tệp nằm trong chính handler xuất/nhập, nên renderer buộc phải mở
+thanh tiến độ *trước* khi biết người dùng chọn gì — hộp chọn tệp của hệ điều hành che khuất nó,
+rồi việc xong trong nửa giây và tiến độ biến mất. Người dùng báo "không có thanh tiến độ".
+
+**Báo kết quả bằng hộp thoại** (`moKetQua()`), không chỉ `status()`. Một dòng chữ xám 12px ở
+đáy cửa sổ là không đủ cho một tác vụ có thể chạy vài phút — người dùng báo "không có thông báo
+thành công hay thất bại" dù `status()` vẫn chạy đúng.
+
+**`fs.WriteStream` báo lỗi qua sự kiện `'error'`, không throw.** Không lắng nghe thì đường dẫn
+không ghi được sẽ làm cả thao tác **treo im lặng**: `xuat()` chờ `drain` mãi mãi, promise không
+bao giờ settle, renderer không hiện gì. Handler dùng `Promise.race` với một promise reject theo
+sự kiện đó.
+`lib/` **phải có trong `build.files`** của `package.json`, nếu không bản đóng gói sẽ thiếu.
+
+- `lib/xuat-sql.js` ghi thẳng ra `fs.WriteStream`, đọc MySQL bằng stream và `pause()` nguồn
+  trong lúc chờ `drain` — bỏ backpressure thì bộ nhớ phình theo tốc độ đọc DB chứ không theo
+  tốc độ ghi đĩa. Giá trị số lấy theo `columnType` nên dump không bọc ngoặc quanh số.
+- `lib/nhap-sql.js` tự tách câu lệnh bằng tokenizer, **không** dùng `multipleStatements`:
+  một dump 20MB không nhét vừa một query, và khi lỗi thì cần biết câu thứ mấy hỏng.
+  Tokenizer hiểu `'…'` `"…"` `` `…` ``, `-- `, `#`, `/* */`, giữ `/*! */`, và `DELIMITER`.
+
+Hai cái bẫy trong tokenizer, cả hai đều đã cắn một lần:
+
+1. **Phải giữ lại một đoạn đuôi giữa các chunk.** `--x`, `/*!` cần nhìn trước 3 ký tự,
+   `DELIMITER ` cần 10, và delimiter tùy biến dài bao nhiêu cũng được. Giữ 1 ký tự là sai
+   ngay tại ranh giới chunk. Test phải nạp cùng một chuỗi ở nhiều cỡ chunk (1/2/3/7/64)
+   rồi so kết quả — đó là cách bắt được lỗi này.
+2. **Đừng gọi gì có chi phí O(n) cho mỗi ký tự.** Bản đầu gọi `cau.trim()` mỗi ký tự để dò
+   `DELIMITER`; với câu `INSERT` dài 800KB thì thành O(n²). Đo thật trên tệp 20MB:
+   **1044 giây** trước, **2,5 giây** sau khi dùng cờ `coNoiDung` và gom mảnh vào mảng rồi
+   `join()` — nhanh hơn 413 lần, cùng cho ra 34 câu lệnh giống hệt.
+   Đáng chú ý: RSS chỉ 153MB, tức **không phải hết bộ nhớ mà là chậm**. Tiến trình bị giết
+   giữa chừng rất dễ làm tưởng nhầm là OOM — hãy đo RSS trước khi kết luận.
+
 **Tab.** `state.tabs` giữ các object `{id, type: 'data'|'query', connId, database, pane, ...}`;
 mỗi tab tự sở hữu DOM pane của nó và có thể có `onFocus` / `onRefresh`. `renderTabs()` dựng lại
 toàn bộ thanh tab mỗi lần gọi.

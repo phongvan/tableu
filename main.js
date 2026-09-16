@@ -6,6 +6,8 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const mysql = require('mysql2');
 const mysqlp = require('mysql2/promise');
+const { xuat } = require('./lib/xuat-sql');
+const { nhap } = require('./lib/nhap-sql');
 
 const CONFIG_FILE = () => path.join(app.getPath('userData'), 'connections.json');
 
@@ -253,6 +255,96 @@ function handle(channel, fn) {
     }
   });
 }
+
+/* ------------------------------------------------------- nhap / xuat SQL */
+
+// Bao tien do ve renderer. Chan bot nhip: mot ban dump lon co the goi ham nay
+// hang chuc nghin lan, gui het qua IPC la phi.
+function taoBaoTienDo(viec) {
+  let lanCuoi = 0;
+  return (xong, tong, phu = {}) => {
+    const gio = Date.now();
+    if (gio - lanCuoi < 150 && xong !== tong) return;
+    lanCuoi = gio;
+    send('sql:progress', { viec, xong, tong, ...phu });
+  };
+}
+
+handle('sql:chonTepLuu', async (database, bang) => {
+  const goiY = bang ? `${database}.${bang}.sql` : `${database}.sql`;
+  const hop = await dialog.showSaveDialog(win, {
+    title: bang ? `Xuất bảng ${bang}` : `Xuất database ${database}`,
+    defaultPath: path.join(app.getPath('downloads'), goiY),
+    filters: [{ name: 'SQL', extensions: ['sql'] }],
+  });
+  if (hop.canceled || !hop.filePath) return { huy: true };
+  return { duongDan: hop.filePath };
+});
+
+handle('sql:chonTepMo', async (database) => {
+  const hop = await dialog.showOpenDialog(win, {
+    title: `Nhập vào database ${database}`,
+    defaultPath: app.getPath('downloads'),
+    filters: [{ name: 'SQL', extensions: ['sql'] }],
+    properties: ['openFile'],
+  });
+  if (hop.canceled || !hop.filePaths.length) return { huy: true };
+  return { duongDan: hop.filePaths[0] };
+});
+
+handle('app:showInFolder', async (duongDan) => {
+  if (!fs.existsSync(duongDan)) throw new Error('Tệp không còn tồn tại.');
+  shell.showItemInFolder(duongDan);
+  return true;
+});
+
+handle('sql:export', async (connId, database, bang, opts = {}, duongDan) => {
+  if (!duongDan) throw new Error('Thiếu đường dẫn tệp.');
+  const hop = { filePath: duongDan };
+  const pool = await getPool(connId, database);
+  const stream = fs.createWriteStream(hop.filePath, { encoding: 'utf8' });
+
+  // WriteStream bao loi qua su kien 'error' chu khong throw. Khong bat thi
+  // duong dan khong ghi duoc se lam ca thao tac treo im lang — nguoi dung
+  // khong thay bao loi, cung khong thay gi xong ca.
+  const loiGhi = new Promise((_, rej) => {
+    stream.once('error', (e) => rej(new Error(`Không ghi được tệp: ${e.message}`)));
+  });
+  loiGhi.catch(() => {});   // tranh canh bao khi xuat chay tron
+
+  const batDau = Date.now();
+  try {
+    const kq = await Promise.race([
+      xuat(pool, { database, bang, opts, stream, tienDo: taoBaoTienDo('xuat') }),
+      loiGhi,
+    ]);
+    await Promise.race([
+      new Promise((res, rej) => stream.end((e) => (e ? rej(e) : res()))),
+      loiGhi,
+    ]);
+    return {
+      ...kq,
+      duongDan: hop.filePath,
+      kichThuoc: fs.statSync(hop.filePath).size,
+      giay: ((Date.now() - batDau) / 1000).toFixed(1),
+    };
+  } catch (e) {
+    stream.destroy();
+    throw e;
+  }
+});
+
+handle('sql:import', async (connId, database, opts = {}, duongDan) => {
+  if (!duongDan) throw new Error('Thiếu đường dẫn tệp.');
+  const pool = await getPool(connId, database);
+  const batDau = Date.now();
+  const kq = await nhap(pool, {
+    duongDan,
+    boQuaLoi: !!opts.boQuaLoi,
+    tienDo: taoBaoTienDo('nhap'),
+  });
+  return { ...kq, duongDan, giay: ((Date.now() - batDau) / 1000).toFixed(1) };
+});
 
 handle('app:info', async () => {
   // Doc tu package.json chu khong ghi cung: doi ten/email/phien ban o mot cho.

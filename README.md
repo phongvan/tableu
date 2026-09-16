@@ -107,6 +107,7 @@ Trước khi phát hành cho người khác, sửa `homepage` trong `package.jso
 | Tab DDL | `SHOW CREATE TABLE` |
 | Tab truy vấn | Soạn SQL **có tô màu cú pháp và gợi ý tên bảng/cột**, `Ctrl+Enter` để chạy, bôi đen để chỉ chạy phần chọn, **giới hạn số dòng trả về**, xuất CSV |
 | Khác | Giao diện sáng/tối, menu chuột phải, kéo đổi rộng cây/cao ô soạn thảo |
+| Xuất / nhập SQL | Xuất bảng hoặc cả database ra `.sql`, nhập tệp `.sql` vào database |
 | Trợ giúp → Giới thiệu | Tên app, phiên bản, tác giả, email, giấy phép |
 
 ## Ô lọc WHERE
@@ -121,6 +122,32 @@ Danh sách cột lấy thẳng từ kết quả vừa hiển thị nên không t
 theo khi bạn chuyển sang bảng khác.
 
 Nội dung ô luôn nằm trên một dòng — dán văn bản nhiều dòng vào sẽ được gộp lại.
+
+## Xuất / nhập SQL
+
+Chuột phải vào **bảng** → *Xuất bảng ra SQL…*
+Chuột phải vào **database** → *Xuất database ra SQL…* hoặc *Nhập từ tệp SQL…*
+
+Khi xuất chọn được: cấu trúc (`CREATE TABLE`), dữ liệu (`INSERT`), và có thêm
+`DROP TABLE IF EXISTS` hay không. Xuất cả database thì lấy hết bảng lẫn view —
+view chỉ lấy định nghĩa, không lấy dữ liệu.
+
+Cả hai chiều đều **chạy theo luồng**, không gom vào bộ nhớ. Đo trên bảng 262.144 dòng:
+
+| | Thời gian | RSS đỉnh |
+|---|---|---|
+| Xuất (19,9 MB) | 0,9 s | 188 MB |
+| Nhập lại | 4,0 s | 344 MB |
+
+Xong việc sẽ hiện **hộp kết quả** cho biết bao nhiêu bảng, bao nhiêu dòng, kích thước tệp
+và thời gian, kèm nút mở thư mục chứa. Hỏng cũng hiện hộp đó với nội dung lỗi.
+
+Khi nhập, nếu một câu lệnh lỗi thì mặc định **dừng ngay** và báo số thứ tự câu đó, để bạn
+biết đã chạy tới đâu. Tick "Bỏ qua câu lệnh lỗi" thì nó chạy tiếp và tổng kết các câu hỏng.
+
+Định dạng tệp tương thích `mysqldump`: tách câu lệnh bằng tokenizer thật nên chịu được
+dấu chấm phẩy nằm trong chuỗi, trong chú thích, và trong thân `TRIGGER`/`PROCEDURE`
+(có hiểu `DELIMITER`).
 
 ## Sửa dữ liệu trên lưới
 
