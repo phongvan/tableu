@@ -31,8 +31,9 @@ npm test              # tất cả suite
 npm test 02           # chỉ suite có "02" trong tên
 ```
 
-`test/run.js` dựng lại database nháp rồi chạy từng suite trong một tiến trình Electron riêng
-(`test/harness.js`). Harness mở cửa sổ thật, nạp `main.js` thật, rồi lái renderer qua
+`test/run.js` chạy từng suite trong một tiến trình Electron riêng (`test/harness.js`), và
+**harness gieo lại database nháp trước mỗi suite**. Gieo một lần cho cả lượt thì suite này
+làm hỏng dữ liệu của suite kia — suite 02 xoá một dòng, suite 06 lại khẳng định có 3 dòng. Harness mở cửa sổ thật, nạp `main.js` thật, rồi lái renderer qua
 `executeJavaScript`. Suite là module trong `test/suites/` xuất một hàm `chay(ctx)`.
 
 `ctx` có: `run(js)` chạy JS trong renderer, `ok(điều_kiện, mô_tả)` ghi nhận một phép kiểm,
@@ -57,6 +58,11 @@ Cấu hình MySQL đọc từ biến môi trường, mặc định trỏ vào Do
 - **Kiểm tra giá trị thật, đừng kiểm tra "có hay không".** Đã ba lần một phép kiểm dạng
   `length > 0` báo đạt trong khi tính năng sai (gợi ý trả về tên bảng thay vì tên cột vì con trỏ
   đặt lệch một ký tự; `offsetLeft` sai gốc toạ độ). In số/chuỗi thật rồi so khớp chính xác.
+- **Kiểm thứ người dùng NHÌN THẤY, không phải thuộc tính JS phía sau.** `el.hidden` vẫn báo
+  `true` trong khi phần tử hiện rành rành vì CSS đè lên — phải dùng
+  `getComputedStyle(el).display`. Tương tự: đo `getBoundingClientRect()` thay vì tin vào
+  thuộc tính layout. Cách chắc ăn để biết phép kiểm có giá trị: **tạm gỡ bản sửa ra, nếu nó
+  vẫn đạt thì nó vô dụng.**
 
 ## Kiến trúc
 
@@ -154,6 +160,12 @@ bao giờ settle, renderer không hiện gì. Handler dùng `Promise.race` với
 sự kiện đó.
 `lib/` **phải có trong `build.files`** của `package.json`, nếu không bản đóng gói sẽ thiếu.
 
+**INSERT phải liệt kê cột và bỏ cột sinh tự động.** MySQL 8 từ chối `INSERT` có giá trị cho
+cột `STORED`/`VIRTUAL GENERATED` (*"The value specified for generated column … is not
+allowed"*), còn **MariaDB thì cho qua** — nên bug này từng ẩn mình suốt vì lúc đó
+`daily-mysql` đang tắt và tôi test trên `seo_db` (MariaDB). Bài học: khi server test không
+phải loại thật, hãy ghi rõ và chạy lại trên loại thật trước khi coi là xong.
+
 - `lib/xuat-sql.js` ghi thẳng ra `fs.WriteStream`, đọc MySQL bằng stream và `pause()` nguồn
   trong lúc chờ `drain` — bỏ backpressure thì bộ nhớ phình theo tốc độ đọc DB chứ không theo
   tốc độ ghi đĩa. Giá trị số lấy theo `columnType` nên dump không bọc ngoặc quanh số.
@@ -174,6 +186,17 @@ Hai cái bẫy trong tokenizer, cả hai đều đã cắn một lần:
    Đáng chú ý: RSS chỉ 153MB, tức **không phải hết bộ nhớ mà là chậm**. Tiến trình bị giết
    giữa chừng rất dễ làm tưởng nhầm là OOM — hãy đo RSS trước khi kết luận.
 
+**Tìm trong lưới (`Ctrl+F`).** Tìm trong phần **đang hiển thị**, không phải truy vấn xuống
+database — đó là việc của ô `WHERE`. Chỉ quét `.pane.active .grid-wrap`, bỏ qua `td.rownum`;
+quét cả cây bên trái thì gõ tên bảng nào cũng ra một đống kết quả vô nghĩa.
+
+Tô sáng bằng cách chèn `<mark>` vào ô, nên **phải lưu `innerHTML` cũ để hoàn nguyên** — ô có
+thể chứa `<span class="null">` hoặc `<span class="blob">`, dùng `textContent` sẽ mất định dạng.
+Chặn ở `MAX_TO_SANG` (2.000) chỗ tô sáng nhưng vẫn đếm đủ, hiển thị `1/2.000+`.
+
+`renderGrid()` gọi `timKiemLamMoi()` sau khi vẽ: lưới dựng lại thì mọi `<mark>` biến mất và
+các tham chiếu `td` đã lưu thành rác, nên phải tìm lại chứ không hoàn nguyên.
+
 **Tab.** `state.tabs` giữ các object `{id, type: 'data'|'query', connId, database, pane, ...}`;
 mỗi tab tự sở hữu DOM pane của nó và có thể có `onFocus` / `onRefresh`. `renderTabs()` dựng lại
 toàn bộ thanh tab mỗi lần gọi.
@@ -187,6 +210,10 @@ Những chỗ này từng tốn thời gian, đừng giẫm lại:
   has already been declared` → cả file không chạy, và main process không báo gì cả.
 - **Độ ưu tiên CSS trong lưới.** `table.grid td` (2 element + 1 class) thắng `td.k-num`
   (1 element + 1 class). Mọi ghi đè cho ô phải viết đủ `table.grid td.k-...`.
+- **Cột `#` phải có `width: 1%`.** Bảng đặt `min-width: 100%`, nên bảng ít cột bị kéo giãn
+  và trình duyệt chia phần dư cho **mọi** cột, kể cả cột số thứ tự — đo được 73px thay vì 52px
+  trên bảng 5 cột. `width: 1%` nói với thuật toán dàn bảng rằng cột này chỉ cần bề rộng nội
+  dung; nó vẫn nở ra khi số thứ tự dài (779401 → 63px, không bị cắt).
 - **Trong `.tabbar` đừng dùng `offsetLeft`.** `.tabbar` không có `position`, nên `offsetParent`
   là `<body>` và toạ độ lệch đúng bằng bề rộng sidebar. Dùng `getBoundingClientRect()`.
 - **Thanh tab ẩn scrollbar** (`scrollbar-width: none`), nên cuộn ngang hoàn toàn dựa vào
@@ -208,6 +235,16 @@ Những chỗ này từng tốn thời gian, đừng giẫm lại:
   stream rồi `destroy()` khi đủ `maxRows`; renderer còn cắt thêm theo **số ô** (`MAX_O_LUOI`)
   vì 1.000 dòng của bảng 453 cột vẫn là 453.000 thẻ `<td>`. Bỏ một trong hai là
   `SELECT * FROM <bảng lớn>` treo cứng cửa sổ — đã từng xảy ra.
+- **`[hidden]` thua mọi khai báo `display` của ta.** Quy tắc `[hidden] { display: none }`
+  nằm trong UA stylesheet, mà stylesheet của tác giả luôn thắng UA — bất kể độ ưu tiên.
+  `.find-bar` đặt `display: flex` nên `el.hidden = true` **không giấu được gì**: thanh tìm
+  luôn hiện và nút đóng trông như hỏng. Nay có `[hidden] { display: none !important; }`
+  ở đầu `styles.css`; đừng gỡ.
+  **Và đừng kiểm bằng `el.hidden`** — thuộc tính đó vẫn đúng trong khi người dùng vẫn nhìn
+  thấy phần tử. Phải kiểm `getComputedStyle(el).display`.
+- **`e.target` của keydown không chắc là phần tử DOM.** Sự kiện phát ở cấp `window` cho
+  `e.target === window`, không có `classList` — kiểm `t.nodeType === 1` trước khi đụng vào.
+  Đã một lần làm hỏng cả handler phím tắt toàn cục.
 - **`.tabbar` có `scroll-behavior: smooth`**, nên sau khi đổi vị trí cuộn phải đợi animation
   xong mới đo được. Test dùng `sleep` cố định rất dễ nhấp nháy — hãy chờ tới khi giá trị
   ổn định thay vì chờ một mốc thời gian.

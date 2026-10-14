@@ -7,6 +7,7 @@ const { app, BrowserWindow } = require('electron');
 const path = require('node:path');
 const os = require('node:os');
 const cfg = require('./config');
+const { seed } = require('./seed');
 
 const suitePath = process.argv[process.argv.length - 1];
 
@@ -66,6 +67,9 @@ app.whenReady().then(async () => {
   console.log(`\n=== ${ten} ===`);
   let loiSuite = null;
   try {
+    // Moi suite bat dau tu trang thai sach. Dung chung mot ban gieo cho ca
+    // luot thi suite nay sua du lieu lam suite kia sai — da tung xay ra.
+    await seed();
     await require(suitePath).chay(ctx);
   } catch (e) {
     loiSuite = e;

@@ -46,8 +46,15 @@ async function chay(ctx) {
     const c = ${cm}; c.setValue(${JSON.stringify(text)});
     c.setCursor({ line: c.lastLine(), ch: c.getLine(c.lastLine()).length });
     c.showHint({ completeSingle: false });
-    await new Promise(r => setTimeout(r, 400));
-    return [...document.querySelectorAll('.CodeMirror-hints li')].map(x => x.textContent); })()`);
+    // Cho den khi dropdown hien ra, khong ngu mot moc co dinh: duoi tai nang
+    // (chay ca luot suite) 400ms co luc khong du va phep kiem nhap nhay.
+    for (let i = 0; i < 40; i++) {
+      await new Promise(r => setTimeout(r, 50));
+      const ds = document.querySelectorAll('.CodeMirror-hints li');
+      if (ds.length) return [...ds].map(x => x.textContent);
+    }
+    return [];   // that su khong co goi y nao
+  })()`);
 
   let g = await goiY('SELECT * FROM daily_par');
   ok(g.length > 0 && g.every((x) => /daily_par/i.test(x)), `goi y ten bang: ${JSON.stringify(g)}`);

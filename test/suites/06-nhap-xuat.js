@@ -46,7 +46,7 @@ async function chay(ctx) {
   const sql = fs.readFileSync(fBang, 'utf8');
   ok(/DROP TABLE IF EXISTS `nguoi_dung`/.test(sql), 'co DROP TABLE IF EXISTS');
   ok(/CREATE TABLE `nguoi_dung`/.test(sql), 'co CREATE TABLE');
-  ok(/INSERT INTO `nguoi_dung` VALUES /.test(sql), 'co INSERT');
+  ok(/INSERT INTO `nguoi_dung` \(`id`,`ten`,/.test(sql), 'INSERT co liet ke cot tuong minh');
   ok(/SET FOREIGN_KEY_CHECKS=0/.test(sql) && /SET FOREIGN_KEY_CHECKS=1/.test(sql),
      'co tat/bat lai FOREIGN_KEY_CHECKS');
   ok(/,NULL,/.test(sql) || /\(NULL/.test(sql) || /NULL\)/.test(sql), 'NULL xuat ra la NULL, khong phai chuoi rong');
@@ -64,6 +64,17 @@ async function chay(ctx) {
   await xuat('nguoi_dung', { cauTruc: false, duLieu: true });
   const sDl = fs.readFileSync(fDl, 'utf8');
   ok(!/CREATE TABLE/.test(sDl) && /INSERT INTO/.test(sDl), 'chi du lieu: co INSERT, khong CREATE');
+
+  /* ---------------- cot sinh tu dong phai bi loai khoi INSERT ---------------- */
+  // MySQL 8 bao loi neu INSERT co gia tri cho cot STORED GENERATED.
+  // MariaDB lai cho qua, nen bug nay tung an minh khi test nham server.
+  const fSinh = path.join(TAM, 'co-cot-sinh.sql');
+  datTepLuu(fSinh); tepHienTai = fSinh;
+  await xuat('co_cot_sinh');
+  const sSinh = fs.readFileSync(fSinh, 'utf8');
+  ok(/INSERT INTO `co_cot_sinh` \(`id`,`gia`,`sl`\) VALUES/.test(sSinh),
+     'INSERT chi gom cot that, khong co thanh_tien');
+  ok(!/`thanh_tien`\)? VALUES/.test(sSinh), 'cot sinh tu dong khong nam trong danh sach cot');
 
   /* ---------------- xuat ca database ---------------- */
   const fDb = path.join(TAM, 'ca-database.sql');

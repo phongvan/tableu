@@ -102,6 +102,30 @@ async function chay(ctx) {
   const x2 = await goi('deleteRow', 'nguoi_dung', [3]);
   ok(!x2.ok, 'xoa lai dong da xoa thi bi chan');
 
+  // --- cot so thu tu khong duoc an theo phan du ---
+  // Bang co `min-width: 100%`, nen bang it cot bi keo gian va truoc day phan du
+  // duoc chia deu cho ca cot `#`. Bang 2 cot la truong hop gian manh nhat.
+  await moTabDuLieu(ctx, db, 'khong_co_pk');
+  const cot = await run(`JSON.stringify((() => {
+    const P = document.querySelector('.pane.active');
+    const ths = [...P.querySelectorAll('table.grid thead th')];
+    const wrap = P.querySelector('.grid-wrap');
+    return { soCot: ths.length - 1,
+             stt: Math.round(ths[0].getBoundingClientRect().width),
+             bang: Math.round(P.querySelector('table.grid').getBoundingClientRect().width),
+             vung: Math.round(wrap.clientWidth) }; })())`);
+  const c2 = JSON.parse(cot);
+  ok(c2.bang >= c2.vung - 2, `bang van lap day khung (${c2.bang}/${c2.vung}px)`);
+  ok(c2.stt <= 60, `bang ${c2.soCot} cot: cot # giu ${c2.stt}px, khong phinh theo phan du`);
+
+  // so thu tu dai van phai hien du, khong bi cat
+  const khongCat = await run(`(() => {
+    const td = document.querySelector('.pane.active tbody td.rownum');
+    if (!td) return true;
+    td.textContent = '779401';
+    return td.scrollWidth <= td.clientWidth + 1; })()`);
+  ok(khongCat, 'so thu tu 6 chu so khong bi cat');
+
   // --- view va bang khong PK deu chi doc ---
   await moTabDuLieu(ctx, db, 'v_nguoi_dung');
   const badge = await run(`(() => { const b = document.querySelector('.pane.active .badge-ro');

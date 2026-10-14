@@ -28,8 +28,15 @@ async function chay(ctx) {
     const c = ${CM}; c.setValue(${JSON.stringify(text)});
     c.setCursor({ line: 0, ch: c.getLine(0).length });
     c.showHint({ completeSingle: false });
-    await new Promise(r => setTimeout(r, 400));
-    return [...document.querySelectorAll('.CodeMirror-hints li')].map(x => x.textContent); })()`);
+    // Cho den khi dropdown hien ra, khong ngu mot moc co dinh: duoi tai nang
+    // (chay ca luot suite) 400ms co luc khong du va phep kiem nhap nhay.
+    for (let i = 0; i < 40; i++) {
+      await new Promise(r => setTimeout(r, 50));
+      const ds = document.querySelectorAll('.CodeMirror-hints li');
+      if (ds.length) return [...ds].map(x => x.textContent);
+    }
+    return [];   // that su khong co goi y nao
+  })()`);
 
   let g = await goiY('appr');
   ok(g.length === 2 && g.includes('approved_at') && g.includes('approved_by'),

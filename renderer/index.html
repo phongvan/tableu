@@ -20,6 +20,7 @@
         <span>TableU</span>
       </div>
       <button class="btn" id="btn-new-conn">+ Kết nối</button>
+      <button class="btn" id="btn-new-query" title="Tab truy vấn mới (Ctrl+T)">+ Query</button>
       <div class="spacer"></div>
       <button class="btn ghost" id="btn-theme" title="Đổi giao diện sáng/tối">◐</button>
     </header>
@@ -36,6 +37,18 @@
       <section class="content">
         <div class="tabbar" id="tabbar"></div>
         <div class="panes" id="panes">
+          <div class="find-bar" id="find-bar" hidden>
+            <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            <input id="find-input" class="find-input" type="text" spellcheck="false"
+                   placeholder="Tìm trong phần đang hiển thị…" />
+            <span class="find-dem" id="find-dem">0/0</span>
+            <button class="btn ghost find-nut" id="find-truoc" title="Kết quả trước (Shift+Enter)">↑</button>
+            <button class="btn ghost find-nut" id="find-sau" title="Kết quả sau (Enter)">↓</button>
+            <button class="btn ghost find-nut" id="find-dong" title="Đóng (Esc)">✕</button>
+          </div>
           <div class="empty-state" id="empty-state">
             <div class="glyph">▤</div>
             <h2>Chưa có gì mở</h2>

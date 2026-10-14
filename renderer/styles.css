@@ -101,6 +101,12 @@ html[data-theme="dark"] {
 /* ================================================================ nền */
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
+
+/* Quy tac `[hidden] { display: none }` nam trong UA stylesheet, nen BAT KY
+   khai bao display nao cua ta cung thang no — du do uu tien thap hon. Phan tu
+   dat `display: flex` roi gan .hidden = true se van hien nguyen. Dat lai o day
+   mot lan cho tat ca. */
+[hidden] { display: none !important; }
 body {
   font: 14px/1.5 var(--font-ui);
   color: var(--text);
@@ -280,6 +286,39 @@ body {
 .pane { position: absolute; inset: 0; display: none; flex-direction: column; }
 .pane.active { display: flex; }
 
+/* ---- thanh tim kiem trong luoi (Ctrl+F) ---- */
+.find-bar {
+  position: absolute; top: 10px; right: 18px; z-index: 30;
+  display: flex; align-items: center; gap: 4px;
+  padding: 5px 6px 5px 11px;
+  background: var(--bg-raised); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+}
+.find-bar svg { color: var(--text-faint); flex: 0 0 auto; }
+.find-input {
+  font: 13px var(--font-ui); color: var(--text);
+  background: transparent; border: none; outline: none;
+  width: 190px; padding: 3px 4px; user-select: text;
+}
+.find-input::placeholder { color: var(--text-faint); }
+.find-dem {
+  font: 11.5px var(--font-mono); color: var(--text-dim);
+  min-width: 56px; text-align: right; padding: 0 6px;
+  border-right: 1px solid var(--border); margin-right: 2px;
+}
+.find-dem.khong-thay { color: var(--danger); }
+.find-nut { padding: 3px 7px; font-size: 13px; line-height: 1; }
+
+mark.tim-thay {
+  background: #ffe066; color: #1a1a1a;
+  border-radius: 2px; padding: 0 1px;
+}
+mark.tim-thay.dang-chon {
+  background: var(--accent); color: #fff;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
 .empty-state {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 10px;
@@ -391,6 +430,11 @@ table.grid th.rownum, table.grid td.rownum {
   position: sticky; left: 0; z-index: 1; background: var(--grid-head);
   color: var(--text-faint); text-align: right; user-select: none;
   min-width: 52px; font-size: 11.5px; padding-right: 12px;
+  /* Bang co `min-width: 100%`, nen khi it cot trinh duyet chia phan du cho moi
+     cot — ke ca cot so thu tu. `width: 1%` la cach noi voi thuat toan dan bang
+     rang cot nay chi can dung be rong noi dung; phan du dồn het cho cot that. */
+  width: 1%;
+  white-space: nowrap;
 }
 table.grid thead th.rownum { z-index: 3; }
 tbody tr:hover td.rownum { color: var(--accent); }

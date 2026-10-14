@@ -369,6 +369,7 @@ function renderTabs() {
     t.appendChild(x);
     t.onclick = () => activateTab(tab.id);
     t.onauxclick = (e) => { if (e.button === 1) closeTab(tab.id); };
+    t.oncontextmenu = (e) => { e.preventDefault(); tabMenu(e, tab); };
     tabbar.appendChild(t);
   }
   $('#empty-state').style.display = state.tabs.length ? 'none' : 'flex';
@@ -430,6 +431,7 @@ function scrollTabIntoView(id) {
 }
 
 function activateTab(id) {
+  if (!findBar.hidden) dongTimKiem();   // ket qua thuoc ve luoi cua tab cu
   state.activeTabId = id;
   for (const t of state.tabs) t.pane.classList.toggle('active', t.id === id);
   renderTabs();
@@ -449,6 +451,35 @@ function closeTab(id) {
     if (next) next.pane.classList.add('active');
   }
   renderTabs();
+}
+
+// Dong nhieu tab mot luot. Goi closeTab() lap lai cung duoc nhung moi lan no
+// dung lai ca thanh tab; voi chuc tab thi thua.
+function dongCacTab(giuId) {
+  for (const t of state.tabs) {
+    if (t.id !== giuId) t.pane.remove();
+  }
+  state.tabs = giuId ? state.tabs.filter((t) => t.id === giuId) : [];
+  if (state.tabs.length) {
+    activateTab(state.tabs[0].id);
+  } else {
+    state.activeTabId = null;
+    renderTabs();
+  }
+}
+
+function tabMenu(e, tab) {
+  const khac = state.tabs.length - 1;
+  const items = [{ label: 'Đóng tab này', run: () => closeTab(tab.id) }];
+  if (khac > 0) {
+    items.push({ label: `Đóng các tab khác (${khac})`, run: () => dongCacTab(tab.id) });
+  }
+  items.push('-');
+  items.push({
+    label: `Đóng tất cả tab (${state.tabs.length})`,
+    run: () => dongCacTab(null),
+  });
+  showMenu(e, items);
 }
 
 function addTab(tab) {
@@ -526,6 +557,7 @@ function renderGrid(container, result, opts = {}) {
   container.appendChild(table);
 
   if (opts.edit) attachEditing(table, result, opts.edit);
+  setTimeout(timKiemLamMoi, 0);   // luoi vua dung lai, cac <mark> cu da mat
 
   if (result.rows.length === 0) {
     container.appendChild(el('div', 'msg dim', 'Không có dòng nào.'));
@@ -1199,15 +1231,168 @@ function currentConnAndDb() {
 
 api.onMenu('menu:new-connection', () => openConnDialog(null));
 api.onMenu('menu:close-tab', () => { if (state.activeTabId) closeTab(state.activeTabId); });
-api.onMenu('menu:new-query', () => {
+function moTabTruyVanMoi() {
   const { conn, database } = currentConnAndDb();
   if (!conn) { status('Hãy tạo một kết nối trước', true); return; }
   openQueryTab(conn, database || '');
-});
+}
+
+api.onMenu('menu:new-query', moTabTruyVanMoi);
+$('#btn-new-query').onclick = moTabTruyVanMoi;
 api.onMenu('menu:refresh', () => {
   const active = state.tabs.find((t) => t.id === state.activeTabId);
   if (active && active.onRefresh) active.onRefresh();
 });
+
+/* ------------------------------------------- tìm trong lưới (Ctrl+F) */
+
+// Tim trong PHAN DANG HIEN THI, giong Ctrl+F cua trinh duyet — khac voi o
+// WHERE (loc tren toan bang duoi database). Chi quet luoi cua pane dang mo,
+// khong quet cay ben trai, neu khong go ten bang nao cung ra day ket qua.
+
+const MAX_TO_SANG = 2000;   // tren muc nay thi chen <mark> bat dau giat
+
+const tim = {
+  tu: '',
+  mark: [],      // cac <mark> dang hien
+  tong: 0,       // tong so lan khop (co the lon hon so <mark> neu bi cat)
+  viTri: -1,
+  daSua: [],     // { td, goc } de hoan nguyen o da bi chen <mark>
+};
+
+const findBar = $('#find-bar');
+const findInput = $('#find-input');
+
+function nhay(buoc) {
+  chonKetQua(tim.viTri + buoc);
+  veDem();
+}
+
+function luoiDangMo() {
+  const p = document.querySelector('.pane.active .grid-wrap');
+  return p && p.querySelector('table.grid') ? p : null;
+}
+
+function goToSang() {
+  // Hoan nguyen bang innerHTML da luu: o co the chua <span class="null">
+  // hoac <span class="blob">, dung textContent se mat dinh dang.
+  for (const { td, goc } of tim.daSua) td.innerHTML = goc;
+  tim.daSua = [];
+  tim.mark = [];
+  tim.viTri = -1;
+}
+
+function toSang(wrap, tu) {
+  goToSang();
+  if (!tu) return 0;
+  const can = tu.toLowerCase();
+  let tong = 0;
+
+  for (const td of wrap.querySelectorAll('tbody td:not(.rownum)')) {
+    const chu = td.textContent;
+    const thap = chu.toLowerCase();
+    if (!thap.includes(can)) continue;
+    tong += thap.split(can).length - 1;
+    if (tim.mark.length >= MAX_TO_SANG) continue;   // van dem, thoi to sang
+
+    tim.daSua.push({ td, goc: td.innerHTML });
+    const manh = document.createDocumentFragment();
+    let i = 0;
+    let j = thap.indexOf(can, i);
+    while (j !== -1) {
+      if (j > i) manh.appendChild(document.createTextNode(chu.slice(i, j)));
+      const m = el('mark', 'tim-thay', chu.slice(j, j + can.length));
+      manh.appendChild(m);
+      tim.mark.push(m);
+      i = j + can.length;
+      j = thap.indexOf(can, i);
+    }
+    if (i < chu.length) manh.appendChild(document.createTextNode(chu.slice(i)));
+    td.textContent = '';
+    td.appendChild(manh);
+  }
+  return tong;
+}
+
+function veDem() {
+  const o = $('#find-dem');
+  if (!tim.tu) { o.textContent = ''; o.classList.remove('khong-thay'); return; }
+  if (!tim.tong) { o.textContent = 'không thấy'; o.classList.add('khong-thay'); return; }
+  o.classList.remove('khong-thay');
+  const vuot = tim.tong > tim.mark.length ? '+' : '';
+  o.textContent = `${tim.viTri + 1}/${fmtNum(tim.mark.length)}${vuot}`;
+}
+
+function chonKetQua(i) {
+  if (!tim.mark.length) return;
+  for (const m of tim.mark) m.classList.remove('dang-chon');
+  tim.viTri = (i + tim.mark.length) % tim.mark.length;
+  const m = tim.mark[tim.viTri];
+  m.classList.add('dang-chon');
+  m.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+function chayTim(giuViTri) {
+  const wrap = luoiDangMo();
+  if (!wrap) { goToSang(); tim.tong = 0; veDem(); return; }
+  const cu = tim.viTri;
+  const tong = toSang(wrap, tim.tu);
+  tim.tong = tong;
+  if (tim.mark.length) chonKetQua(giuViTri && cu >= 0 ? Math.min(cu, tim.mark.length - 1) : 0);
+  veDem();
+  if (tong > tim.mark.length) {
+    status(`Hơn ${fmtNum(MAX_TO_SANG)} kết quả — chỉ tô sáng ${fmtNum(MAX_TO_SANG)} cái đầu`);
+  }
+}
+
+function moTimKiem() {
+  if (!luoiDangMo()) { status('Chưa có bảng nào đang mở để tìm', true); return; }
+  findBar.hidden = false;
+  findInput.focus();
+  findInput.select();
+  if (findInput.value !== tim.tu) { tim.tu = findInput.value.trim(); chayTim(false); }
+}
+
+function dongTimKiem() {
+  findBar.hidden = true;
+  tim.tu = '';
+  goToSang();
+}
+
+// Luoi duoc dung lai sau moi lan nap/sap xep/doi trang -> cac <mark> cu bien mat
+function timKiemLamMoi() {
+  if (findBar.hidden || !tim.tu) return;
+  tim.daSua = [];          // o cu da bi thay the, khong hoan nguyen duoc nua
+  tim.mark = [];
+  chayTim(false);
+}
+
+findInput.addEventListener('input', () => {
+  tim.tu = findInput.value.trim();
+  chayTim(false);
+});
+findInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); nhay(e.shiftKey ? -1 : 1); }
+  else if (e.key === 'Escape') { e.preventDefault(); dongTimKiem(); }
+});
+$('#find-sau').onclick = () => nhay(1);
+$('#find-truoc').onclick = () => nhay(-1);
+$('#find-dong').onclick = dongTimKiem;
+
+window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); moTimKiem(); }
+  else if (e.key === 'Escape' && !findBar.hidden) {
+    // Dung cuop Escape cua o soan thao: o sua tren luoi va CodeMirror
+    // deu dung Escape de huy, nguoi dung se mat thao tac dang do.
+    // e.target co the la window/document (su kien phat o cap tren), luc do
+    // khong co classList — phai kiem tra la phan tu DOM truoc.
+    const t = e.target;
+    if (t && t.nodeType === 1
+        && (t.classList.contains('cell-input') || t.closest('.CodeMirror'))) return;
+    e.preventDefault();
+    dongTimKiem();
+  } else if (e.key === 'F3') { e.preventDefault(); nhay(e.shiftKey ? -1 : 1); }
+}, true);
 
 /* --------------------------------------------------------- nhập / xuất SQL */
 
@@ -1450,6 +1635,6 @@ reloadConnections().then(() => {
 });
 
 /* Hook gỡ lỗi: chỉ dùng từ DevTools (Ctrl+Shift+I). */
-window.__tableu = { state, reloadConnections, toggleConn, toggleDb, openDataTab, openQueryTab, renderTree, moGioiThieu, moXuat, moNhap };
+window.__tableu = { state, reloadConnections, toggleConn, toggleDb, openDataTab, openQueryTab, renderTree, moGioiThieu, moXuat, moNhap, dongCacTab, moTabTruyVanMoi, moTimKiem, dongTimKiem, tim };
 
 })();

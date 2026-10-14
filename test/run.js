@@ -19,8 +19,8 @@ async function main() {
   }
   console.log(`MySQL test: ${cfg.user}@${cfg.host}:${cfg.port}  (nhap: ${cfg.playground})`);
   try {
-    await seed();
-    console.log(`Da dung lai database nhap "${cfg.playground}".`);
+    await seed();   // kiem tra ket noi som; moi suite se tu gieo lai
+    console.log(`Ket noi duoc; database nhap "${cfg.playground}" san sang.`);
   } catch (e) {
     console.error(`\nKhong ket noi duoc MySQL: ${e.message}`);
     console.error('Dat lai bang TABLEU_TEST_HOST / _PORT / _USER / _PASS neu can.');

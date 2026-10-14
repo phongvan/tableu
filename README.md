@@ -106,9 +106,30 @@ Trước khi phát hành cho người khác, sửa `homepage` trong `package.jso
 | Tab cấu trúc | Danh sách cột (kiểu, NULL, khóa, mặc định, ghi chú) + chỉ mục |
 | Tab DDL | `SHOW CREATE TABLE` |
 | Tab truy vấn | Soạn SQL **có tô màu cú pháp và gợi ý tên bảng/cột**, `Ctrl+Enter` để chạy, bôi đen để chỉ chạy phần chọn, **giới hạn số dòng trả về**, xuất CSV |
+| Thanh tab | Chuột phải vào tab để đóng tab này / các tab khác / tất cả. Nút **+ Query** mở tab truy vấn mới |
 | Khác | Giao diện sáng/tối, menu chuột phải, kéo đổi rộng cây/cao ô soạn thảo |
 | Xuất / nhập SQL | Xuất bảng hoặc cả database ra `.sql`, nhập tệp `.sql` vào database |
 | Trợ giúp → Giới thiệu | Tên app, phiên bản, tác giả, email, giấy phép |
+
+## Tìm trong bảng (Ctrl+F)
+
+`Ctrl+F` mở thanh tìm kiếm giống trình duyệt, tìm trong **phần đang hiển thị** của lưới.
+
+| Phím | Việc |
+|---|---|
+| `Ctrl+F` | Mở thanh tìm |
+| `Enter` / `F3` | Kết quả tiếp theo |
+| `Shift+Enter` / `Shift+F3` | Kết quả trước |
+| `Esc` | Đóng |
+
+Không phân biệt hoa thường, tô vàng mọi chỗ khớp và tô xanh chỗ đang chọn, tự cuộn tới nó.
+Bộ đếm hiện `3/47`. Chỉ quét lưới của tab đang mở, không quét cây bên trái và bỏ qua cột `#`.
+
+**Khác với ô `WHERE`**: ô `WHERE` lọc trên toàn bảng dưới database và trả về dòng mới;
+`Ctrl+F` chỉ tìm trong những dòng đã tải về màn hình. Muốn tìm cả bảng thì dùng `WHERE`.
+
+Lưới lớn thì chỉ tô sáng 2.000 chỗ đầu (bộ đếm hiện `1/2.000+`) — trên mức đó việc chèn
+thẻ vào DOM bắt đầu giật. Đo trên lưới 56.000 ô: tìm mất khoảng 0,3 giây.
 
 ## Ô lọc WHERE
 
@@ -233,10 +254,11 @@ và được commit vào repo (~584 KB). Nâng cấp thì `npm i -D codemirror@5
 | Phím | Việc |
 |---|---|
 | `Ctrl+N` | Kết nối mới |
-| `Ctrl+T` | Tab truy vấn mới |
+| `Ctrl+T` | Tab truy vấn mới (bằng nút **+ Query**) |
 | `Ctrl+W` | Đóng tab |
 | `Ctrl+Enter` | Chạy câu lệnh (trong tab truy vấn) |
 | `F5` | Làm mới tab hiện tại |
+| `Ctrl+F` | Tìm trong phần đang hiển thị |
 | `Ctrl+Shift+I` | DevTools |
 
 ## Cấu trúc mã
