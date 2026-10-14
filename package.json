@@ -1,7 +1,7 @@
 {
   "name": "tableu",
   "productName": "TableU",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "description": "Trình xem bảng và chạy truy vấn MySQL, gọn nhẹ cho Linux",
   "main": "main.js",
   "author": {
