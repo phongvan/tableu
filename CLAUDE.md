@@ -84,6 +84,27 @@ Ba lớp, ranh giới rõ ràng:
 `{ok: false, error}` — không bao giờ ném lỗi qua IPC. Renderer gọi `unwrap()` để bung ra hoặc
 ném `Error`. Thêm kênh mới thì phải đi qua `handle()` để giữ nguyên hợp đồng này.
 
+**SSH tunnel.** [lib/ssh-tunnel.js](lib/ssh-tunnel.js) mở một `net.Server` ở
+`127.0.0.1:<cổng ngẫu nhiên>` và đẩy mọi kết nối qua `ssh2` tới đích bên kia.
+`getPool()` gọi `diaChiToi()` để biết nên trỏ `mysql2` vào đâu.
+
+- **Máy chủ/cổng MySQL trong cấu hình là nhìn TỪ PHÍA máy chủ SSH**, không phải từ máy này.
+  Đây là chỗ người dùng dễ hiểu sai nhất, nên hộp thoại ghi rõ.
+- **Một đường hầm dùng chung cho mọi database của cùng một kết nối** (`tunnels` theo `connId`),
+  không phải mỗi pool một cái. `closePoolsFor()` đóng luôn đường hầm.
+- Đường hầm đứt giữa chừng thì callback `onDong` **dọn luôn pool**, vì mọi pool trỏ qua nó
+  đã thành rác.
+- `conn:test` cho kết nối **chưa lưu** thì chưa có `connId`, nên dùng đường hầm tạm và đóng
+  ngay trong `finally`.
+- Dùng `ssh2` chứ không gọi binary `ssh`: cần xác thực mật khẩu và passphrase mà không hỏi
+  người dùng giữa chừng. `ssh2` thuần JS (native chỉ là tùy chọn), nên vẫn không cần build
+  tools — đã kiểm `npm run pack` chạy trót lọt.
+- `loiDeHieu()` đổi lỗi ssh2 sang câu người dùng làm được gì đó.
+  *"All configured authentication methods failed"* không nói cho ai biết phải sửa gì.
+
+Test cần sshd thật: `bash test/ssh-test.sh up` dựng container cùng mạng docker với MySQL,
+`down` để dọn. Không có container đó thì suite 12 tự bỏ qua.
+
 **Pool** được cache trong `Map` với khoá `${connId}::${database}`. Sửa hoặc xoá một kết nối sẽ
 gọi `closePoolsFor(connId)` để dọn mọi pool của nó.
 

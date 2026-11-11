@@ -65,6 +65,18 @@ $('#btn-theme').onclick = () =>
 
 const dlg = $('#conn-dialog');
 
+const sshKhoi = $('#ssh-khoi');
+const sshBat = $('#f-ssh-bat');
+
+function veKhoiSsh() { sshKhoi.hidden = !sshBat.checked; }
+sshBat.onchange = veKhoiSsh;
+
+$('#f-ssh-chon-khoa').onclick = async () => {
+  const r = await api.chonTepKhoa();
+  if (!r.ok) { setDialogMsg(r.error, 'error'); return; }
+  if (!r.data.huy) $('#f-ssh-khoa').value = r.data.duongDan;
+};
+
 function openConnDialog(existing) {
   $('#conn-dialog-title').textContent = existing ? 'Sửa kết nối' : 'Kết nối mới';
   $('#f-id').value = existing ? existing.id : '';
@@ -74,6 +86,15 @@ function openConnDialog(existing) {
   $('#f-user').value = existing ? existing.user : 'root';
   $('#f-pass').value = existing ? existing.password : '';
   $('#f-db').value = existing ? existing.database || '' : '';
+
+  sshBat.checked = !!(existing && existing.sshBat);
+  $('#f-ssh-host').value = existing ? existing.sshHost || '' : '';
+  $('#f-ssh-port').value = (existing && existing.sshPort) || 22;
+  $('#f-ssh-user').value = existing ? existing.sshUser || '' : '';
+  $('#f-ssh-khoa').value = existing ? existing.sshKhoa || '' : '';
+  $('#f-ssh-matkhau').value = existing ? existing.sshMatKhau || '' : '';
+  $('#f-ssh-passphrase').value = existing ? existing.sshPassphrase || '' : '';
+  veKhoiSsh();
   setDialogMsg('');
   dlg.showModal();
   $('#f-name').focus();
@@ -94,6 +115,13 @@ function readForm() {
     user: $('#f-user').value,
     password: $('#f-pass').value,
     database: $('#f-db').value,
+    sshBat: sshBat.checked,
+    sshHost: $('#f-ssh-host').value,
+    sshPort: $('#f-ssh-port').value,
+    sshUser: $('#f-ssh-user').value,
+    sshKhoa: $('#f-ssh-khoa').value,
+    sshMatKhau: $('#f-ssh-matkhau').value,
+    sshPassphrase: $('#f-ssh-passphrase').value,
   };
 }
 
@@ -103,7 +131,10 @@ $('#btn-cancel').onclick = () => dlg.close();
 $('#btn-test').onclick = async () => {
   setDialogMsg('Đang kiểm tra…');
   const res = await api.conn.test(readForm());
-  if (res.ok) setDialogMsg(`Kết nối được — MySQL ${res.data.version}`, 'ok');
+  if (res.ok) {
+    setDialogMsg(`Kết nối được — MySQL ${res.data.version}`
+      + (res.data.quaSsh ? ' (qua SSH tunnel)' : ''), 'ok');
+  }
   else setDialogMsg(res.error, 'error');
 };
 
@@ -171,7 +202,7 @@ function renderTree() {
       twisty: st.open ? '▼' : '▶',
       icon: '●',
       label: conn.name,
-      meta: `${conn.host}:${conn.port}`,
+      meta: conn.sshBat ? `⇄ ${conn.sshHost} → ${conn.host}:${conn.port}` : `${conn.host}:${conn.port}`,
       key: `c:${conn.id}`,
       onClick: () => toggleConn(conn),
       onContext: (e) => connMenu(e, conn),

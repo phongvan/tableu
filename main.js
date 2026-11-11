@@ -9,12 +9,15 @@ const mysqlp = require('mysql2/promise');
 const { xuat } = require('./lib/xuat-sql');
 const { nhap } = require('./lib/nhap-sql');
 const { hienThi: versionHienThi } = require('./lib/version');
+const { moTunnel } = require('./lib/ssh-tunnel');
 
 const CONFIG_FILE = () => path.join(app.getPath('userData'), 'connections.json');
 
 let win = null;
 /** key: `${connId}::${database}` -> pool */
 const pools = new Map();
+/** connId -> { cong, dong } — mot duong ham dung chung cho moi pool cua ket noi do */
+const tunnels = new Map();
 
 /* ---------------------------------------------------------------- window */
 
@@ -110,6 +113,32 @@ function saveConnections(list) {
 
 /* -------------------------------------------------------------- pools */
 
+function sshCfg(cfg) {
+  return {
+    host: cfg.sshHost, port: cfg.sshPort || 22, user: cfg.sshUser,
+    matKhau: cfg.sshMatKhau, khoaRiengTu: cfg.sshKhoa || '',
+    passphrase: cfg.sshPassphrase,
+    // Dich la dia chi MySQL NHIN TU PHIA MAY CHU SSH, khong phai tu may nay.
+    dichHost: cfg.host || '127.0.0.1', dichCong: Number(cfg.port) || 3306,
+  };
+}
+
+// Tra ve dia chi ma mysql2 nen noi toi: hoac thang den MySQL, hoac toi dau
+// nay cua duong ham. Mot ket noi dung chung mot duong ham cho moi database.
+async function diaChiToi(cfg, connId) {
+  if (!cfg.sshBat) return { host: cfg.host, port: Number(cfg.port) || 3306 };
+  if (connId && tunnels.has(connId)) {
+    return { host: '127.0.0.1', port: tunnels.get(connId).cong };
+  }
+  const t = await moTunnel(sshCfg(cfg), () => {
+    // Duong ham dut thi moi pool tro qua no deu thanh rac
+    if (connId && tunnels.get(connId) === t) tunnels.delete(connId);
+    if (connId) closePoolsFor(connId).catch(() => {});
+  });
+  if (connId) tunnels.set(connId, t);
+  return { host: '127.0.0.1', port: t.cong, tam: connId ? null : t };
+}
+
 function connConfig(cfg, database) {
   return {
     host: cfg.host || '127.0.0.1',
@@ -133,7 +162,8 @@ async function getPool(connId, database) {
   if (pools.has(key)) return pools.get(key);
   const cfg = loadConnections().find((c) => c.id === connId);
   if (!cfg) throw new Error('Không tìm thấy kết nối đã lưu.');
-  const pool = mysqlp.createPool(connConfig(cfg, database));
+  const dc = await diaChiToi(cfg, connId);
+  const pool = mysqlp.createPool(connConfig({ ...cfg, host: dc.host, port: dc.port }, database));
 
   // MySQL 8 cache thong ke bang trong data dictionary, mac dinh 86400 giay.
   // Khong tat thi TABLE_ROWS o information_schema dung yen ca ngay: them
@@ -155,12 +185,18 @@ async function closePoolsFor(connId) {
       try { await pool.end(); } catch { /* ignore */ }
     }
   }
+  const t = tunnels.get(connId);
+  if (t) { tunnels.delete(connId); try { t.dong(); } catch { /* ignore */ } }
 }
 
 async function closeAllPools() {
   for (const [key, pool] of [...pools.entries()]) {
     pools.delete(key);
     try { await pool.end(); } catch { /* ignore */ }
+  }
+  for (const [id, t] of [...tunnels.entries()]) {
+    tunnels.delete(id);
+    try { t.dong(); } catch { /* ignore */ }
   }
 }
 
@@ -306,6 +342,16 @@ handle('sql:chonTepMo', async (database) => {
   return { duongDan: hop.filePaths[0] };
 });
 
+handle('app:chonTepKhoa', async () => {
+  const hop = await dialog.showOpenDialog(win, {
+    title: 'Chọn tệp khóa riêng SSH',
+    defaultPath: path.join(app.getPath('home'), '.ssh'),
+    properties: ['openFile', 'showHiddenFiles'],
+  });
+  if (hop.canceled || !hop.filePaths.length) return { huy: true };
+  return { duongDan: hop.filePaths[0] };
+});
+
 handle('app:showInFolder', async (duongDan) => {
   if (!fs.existsSync(duongDan)) throw new Error('Tệp không còn tồn tại.');
   shell.showItemInFolder(duongDan);
@@ -395,7 +441,16 @@ handle('app:openExternal', async (url) => {
   return true;
 });
 
-handle('conn:list', async () => loadConnections().map((c) => ({ ...c, password: c.password ? '••••' : '' })));
+// Che ca hai mat khau khi gui sang renderer; form gui lai dau che thi giu nguyen.
+const CHE = '••••';
+const cheMatKhau = (c) => ({
+  ...c,
+  password: c.password ? CHE : '',
+  sshMatKhau: c.sshMatKhau ? CHE : '',
+  sshPassphrase: c.sshPassphrase ? CHE : '',
+});
+
+handle('conn:list', async () => loadConnections().map(cheMatKhau));
 
 handle('conn:save', async (input) => {
   const list = loadConnections();
@@ -408,8 +463,17 @@ handle('conn:save', async (input) => {
     port: Number(input.port) || 3306,
     user: (input.user || '').trim(),
     // giữ mật khẩu cũ nếu form gửi lên placeholder
-    password: input.password === '••••' && existing ? existing.password : (input.password || ''),
+    password: input.password === CHE && existing ? existing.password : (input.password || ''),
     database: (input.database || '').trim(),
+
+    sshBat: !!input.sshBat,
+    sshHost: (input.sshHost || '').trim(),
+    sshPort: Number(input.sshPort) || 22,
+    sshUser: (input.sshUser || '').trim(),
+    sshKhoa: (input.sshKhoa || '').trim(),
+    sshMatKhau: input.sshMatKhau === CHE && existing ? existing.sshMatKhau : (input.sshMatKhau || ''),
+    sshPassphrase: input.sshPassphrase === CHE && existing
+      ? existing.sshPassphrase : (input.sshPassphrase || ''),
   };
   if (existing) Object.assign(existing, record);
   else list.push(record);
@@ -426,16 +490,31 @@ handle('conn:delete', async (id) => {
 
 handle('conn:test', async (input) => {
   let cfg = input;
-  if (input.password === '••••' && input.id) {
-    const saved = loadConnections().find((c) => c.id === input.id);
-    if (saved) cfg = { ...input, password: saved.password };
+  // Form gui dau che thi lay lai gia tri da luu
+  const daLuu = input.id ? loadConnections().find((c) => c.id === input.id) : null;
+  if (daLuu) {
+    cfg = { ...input };
+    for (const k of ['password', 'sshMatKhau', 'sshPassphrase']) {
+      if (input[k] === CHE) cfg[k] = daLuu[k];
+    }
   }
-  const c = await mysqlp.createConnection(connConfig(cfg, cfg.database || undefined));
+
+  // Ket noi chua luu thi chua co connId — dung duong ham tam, dong ngay sau khi thu.
+  let tam = null;
   try {
-    const [rows] = await c.query('SELECT VERSION() AS v');
-    return { version: rows[0].v };
+    if (cfg.sshBat) {
+      tam = await moTunnel(sshCfg(cfg));
+      cfg = { ...cfg, host: '127.0.0.1', port: tam.cong, sshBat: false };
+    }
+    const c = await mysqlp.createConnection(connConfig(cfg, cfg.database || undefined));
+    try {
+      const [rows] = await c.query('SELECT VERSION() AS v');
+      return { version: rows[0].v, quaSsh: !!input.sshBat };
+    } finally {
+      await c.end();
+    }
   } finally {
-    await c.end();
+    if (tam) tam.dong();
   }
 });
 

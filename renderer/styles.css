@@ -653,6 +653,20 @@ pre.ddl {
   0% { margin-left: 0; } 50% { margin-left: 65%; } 100% { margin-left: 0; }
 }
 
+/* ---- phan SSH trong hop ket noi ---- */
+.dialog .chk.ssh-bat { margin-top: 4px; }
+.ssh-khoi {
+  display: flex; flex-direction: column; gap: 11px;
+  padding: 13px 14px; border-radius: var(--r-md);
+  background: var(--bg-alt); border: 1px solid var(--border);
+}
+.ssh-ghi-chu {
+  margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-dim);
+}
+.ssh-ghi-chu b { color: var(--text); font-weight: 600; }
+.dialog .nut-cuoi { flex: 0 0 auto; justify-content: flex-end; }
+.dialog .nut-cuoi .btn { padding: 7px 11px; }
+
 /* ---- hop them dong moi ---- */
 .dialog.them-dong { width: 540px; }
 .dialog.them-dong form { gap: 10px; }

@@ -105,6 +105,7 @@ Trước khi phát hành cho người khác, sửa `homepage` trong `package.jso
 
 | Khu vực | Có gì |
 |---|---|
+| Kết nối | MySQL trực tiếp hoặc **qua SSH tunnel** (khóa riêng / mật khẩu) |
 | Cây bên trái | Nhiều kết nối · database · bảng/view · số dòng ước lượng · ô lọc tên bảng |
 | Tab dữ liệu | Lưới cuộn với header dính, sắp xếp bằng cách bấm tên cột, phân trang 100–1000 dòng, ô `WHERE` **có gợi ý tên cột**, **sửa ô tại chỗ**, xóa dòng, xuất CSV |
 | Tab cấu trúc | Danh sách cột (kiểu, NULL, khóa, mặc định, ghi chú) + chỉ mục |
@@ -158,6 +159,24 @@ Danh sách cột lấy thẳng từ kết quả vừa hiển thị nên không t
 theo khi bạn chuyển sang bảng khác.
 
 Nội dung ô luôn nằm trên một dòng — dán văn bản nhiều dòng vào sẽ được gộp lại.
+
+## Kết nối qua SSH tunnel
+
+Tick **Kết nối qua SSH tunnel** trong hộp kết nối, dùng khi MySQL không mở ra ngoài mà chỉ
+vào được từ một máy chủ nào đó.
+
+Điểm dễ nhầm nhất: **máy chủ và cổng MySQL ở phần trên được hiểu là nhìn từ phía máy chủ SSH**,
+không phải từ máy bạn. Ví dụ MySQL chạy ngay trên server đó thì điền `127.0.0.1:3306`.
+
+Xác thực bằng **khóa riêng** (có nút chọn tệp, hỗ trợ passphrase) hoặc **mật khẩu** — để trống
+ô khóa thì dùng mật khẩu. Nút **Kiểm tra** chạy thử cả đường hầm lẫn kết nối MySQL trước khi lưu.
+
+Kết nối dùng SSH được đánh dấu trên cây bên trái: `⇄ 203.0.113.10 → 10.0.0.5:3306`.
+
+Mỗi kết nối dùng **một đường hầm chung** cho mọi database. Ngắt kết nối là đóng luôn đường hầm.
+
+Lưu ý: mật khẩu SSH và passphrase lưu cùng chỗ với mật khẩu MySQL —
+`~/.config/tableu/connections.json`, văn bản thường quyền `0600`.
 
 ## Xuất / nhập SQL
 

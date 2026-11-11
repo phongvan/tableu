@@ -19,7 +19,8 @@
     "dist": "node scripts/dong-goi.js all"
   },
   "dependencies": {
-    "mysql2": "^3.11.5"
+    "mysql2": "^3.11.5",
+    "ssh2": "^1.17.0"
   },
   "devDependencies": {
     "codemirror": "^5.65.21",

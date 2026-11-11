@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('api', {
       invoke('sql:import', connId, database, opts, duongDan),
   },
   moThuMuc: (duongDan) => invoke('app:showInFolder', duongDan),
+  chonTepKhoa: () => invoke('app:chonTepKhoa'),
   onTienDo: (cb) => {
     const listener = (_e, data) => cb(data);
     ipcRenderer.on('sql:progress', listener);

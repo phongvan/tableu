@@ -78,6 +78,26 @@
         <label class="grow">Mật khẩu<input class="input" id="f-pass" type="password" /></label>
       </div>
       <label>Database mặc định (tùy chọn)<input class="input" id="f-db" placeholder="để trống = xem tất cả" /></label>
+
+      <label class="chk ssh-bat"><input type="checkbox" id="f-ssh-bat" /> Kết nối qua SSH tunnel</label>
+      <div class="ssh-khoi" id="ssh-khoi" hidden>
+        <p class="ssh-ghi-chu">Máy chủ và cổng MySQL ở trên được hiểu là <b>nhìn từ phía máy chủ SSH</b>.</p>
+        <div class="row">
+          <label class="grow">Máy chủ SSH<input class="input" id="f-ssh-host" placeholder="vd: 203.0.113.10" /></label>
+          <label class="port">Cổng<input class="input" id="f-ssh-port" type="number" value="22" /></label>
+        </div>
+        <label>Tài khoản SSH<input class="input" id="f-ssh-user" placeholder="vd: ubuntu" /></label>
+        <div class="row">
+          <label class="grow">Tệp khóa riêng (để trống = dùng mật khẩu)
+            <input class="input" id="f-ssh-khoa" placeholder="vd: ~/.ssh/id_ed25519" /></label>
+          <label class="nut-cuoi">&nbsp;
+            <button type="button" class="btn ghost" id="f-ssh-chon-khoa">Chọn tệp…</button></label>
+        </div>
+        <div class="row">
+          <label class="grow">Mật khẩu SSH<input class="input" id="f-ssh-matkhau" type="password" /></label>
+          <label class="grow">Passphrase của khóa<input class="input" id="f-ssh-passphrase" type="password" /></label>
+        </div>
+      </div>
       <p class="dialog-msg" id="conn-msg"></p>
       <div class="dialog-actions">
         <button type="button" class="btn ghost" id="btn-test">Kiểm tra</button>
