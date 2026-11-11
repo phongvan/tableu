@@ -8,6 +8,7 @@ const mysql = require('mysql2');
 const mysqlp = require('mysql2/promise');
 const { xuat } = require('./lib/xuat-sql');
 const { nhap } = require('./lib/nhap-sql');
+const { hienThi: versionHienThi } = require('./lib/version');
 
 const CONFIG_FILE = () => path.join(app.getPath('userData'), 'connections.json');
 
@@ -133,6 +134,16 @@ async function getPool(connId, database) {
   const cfg = loadConnections().find((c) => c.id === connId);
   if (!cfg) throw new Error('Không tìm thấy kết nối đã lưu.');
   const pool = mysqlp.createPool(connConfig(cfg, database));
+
+  // MySQL 8 cache thong ke bang trong data dictionary, mac dinh 86400 giay.
+  // Khong tat thi TABLE_ROWS o information_schema dung yen ca ngay: them
+  // hang chuc nghin dong ma cay ben trai van bao so cu, bam "Lam moi" cung
+  // vo ich. Dat o muc connection vi day la bien phien.
+  // MariaDB khong co bien nay -> nuot loi, khong sao.
+  pool.pool.on('connection', (c) => {
+    c.query('SET SESSION information_schema_stats_expiry = 0', () => {});
+  });
+
   pools.set(key, pool);
   return pool;
 }
@@ -358,7 +369,7 @@ handle('app:info', async () => {
     // Doc thang tu package.json, khong dung app.getVersion(): khi entry point
     // khong nam canh package.json (vi du harness test) thi ham do tra ve
     // phien ban cua chinh Electron.
-    phienBan: pkg.version || app.getVersion(),
+    phienBan: versionHienThi(pkg.version || app.getVersion()),
     moTa: pkg.description || '',
     tacGia: tacGia.name || '',
     email: tacGia.email || '',
@@ -617,6 +628,33 @@ handle('db:deleteRow', async (connId, database, table, keyValues) => {
   );
   if (res.affectedRows === 0) throw new Error('Không khớp dòng nào — có thể dòng đã bị xóa.');
   return { affectedRows: res.affectedRows };
+});
+
+// Hai thao tac pha huy. Ten bang luon qua escapeId, va server tu kiem tra
+// bang co that trong database do khong — khong tin ten client gui len.
+async function kiemBangTonTai(pool, database, bang) {
+  const [r] = await pool.query(
+    `SELECT TABLE_TYPE AS loai FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`, [database, bang]);
+  if (!r.length) throw new Error(`Không tìm thấy ${database}.${bang}`);
+  return r[0].loai;
+}
+
+handle('db:dropTable', async (connId, database, bang) => {
+  const pool = await getPool(connId, database);
+  const loai = await kiemBangTonTai(pool, database, bang);
+  const gi = loai === 'VIEW' ? 'VIEW' : 'TABLE';
+  await pool.query(`DROP ${gi} ${mysql.escapeId(bang)}`);
+  return { bang, loai: gi };
+});
+
+handle('db:truncateTable', async (connId, database, bang) => {
+  const pool = await getPool(connId, database);
+  const loai = await kiemBangTonTai(pool, database, bang);
+  if (loai === 'VIEW') throw new Error('View không có dữ liệu riêng để xóa.');
+  const [truoc] = await pool.query(`SELECT COUNT(*) AS n FROM ${mysql.escapeId(bang)}`);
+  await pool.query(`TRUNCATE TABLE ${mysql.escapeId(bang)}`);
+  return { bang, soDongDaXoa: Number(truoc[0].n) };
 });
 
 handle('db:disconnect', async (connId) => { await closePoolsFor(connId); return true; });

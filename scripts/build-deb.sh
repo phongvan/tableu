@@ -7,7 +7,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-VERSION=$(node -p "require('./package.json').version")
+# package.json giu semver ba so; hien thi rut gon ".0" o cuoi (xem lib/version.js)
+VERSION=$(node -p "require('./lib/version').hienThi(require('./package.json').version)")
 PKG=tableu
 APPDIR=dist/linux-unpacked
 STAGE=dist/deb-stage

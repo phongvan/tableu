@@ -4,12 +4,17 @@
 async function chay(ctx) {
   const { ok, run, doiToi } = ctx;
   const pkg = require('../../package.json');
+  const { hienThi } = require('../../lib/version');
+  // package.json giu semver ba so, hop Gioi thieu hien dang rut gon
+  const verHienThi = hienThi(pkg.version);
 
   // --- kenh app:info ---
   const t = await run(`window.api.appInfo()`);
   ok(t.ok, 'kenh app:info tra ve duoc');
   ok(t.data.ten === 'TableU', `ten app = "${t.data.ten}" (khong phai "tableu" viet thuong)`);
-  ok(t.data.phienBan === pkg.version, `phien ban = ${t.data.phienBan}, khop package.json`);
+  ok(t.data.phienBan === verHienThi,
+     `phien ban hien thi = ${t.data.phienBan} (package.json: ${pkg.version})`);
+  ok(!/^\d+\.\d+\.0$/.test(t.data.phienBan), 'khong hien duoi ".0" thua');
   ok(t.data.tacGia === pkg.author.name, `tac gia = "${t.data.tacGia}"`);
   ok(t.data.email === pkg.author.email, `email = "${t.data.email}"`);
   ok(t.data.giayPhep === pkg.license, `giay phep = ${t.data.giayPhep}`);
@@ -27,7 +32,7 @@ async function chay(ctx) {
              rong: Math.round(d.getBoundingClientRect().width) }; })()`);
   ok(noiDung.tacGia === pkg.author.name, `hien tac gia: "${noiDung.tacGia}"`);
   ok(noiDung.email === pkg.author.email, `hien email: "${noiDung.email}"`);
-  ok(noiDung.ver === `v${pkg.version}`, `hien phien ban: "${noiDung.ver}"`);
+  ok(noiDung.ver === `v${verHienThi}`, `hien phien ban: "${noiDung.ver}"`);
   ok(noiDung.giayPhep === 'MIT', `hien giay phep: "${noiDung.giayPhep}"`);
   ok(noiDung.moTa.length > 10, `hien mo ta: "${noiDung.moTa.slice(0, 40)}…"`);
   ok(noiDung.rong > 300 && noiDung.rong < 520, `hop thoai rong ${noiDung.rong}px`);

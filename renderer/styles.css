@@ -621,6 +621,20 @@ pre.ddl {
   0% { margin-left: 0; } 50% { margin-left: 65%; } 100% { margin-left: 0; }
 }
 
+/* ---- hop xac nhan thao tac pha huy ---- */
+.dialog.xac-nhan { width: 430px; }
+.xn-mota {
+  margin: 0; padding: 0 22px 14px; font-size: 13.5px; line-height: 1.55;
+  color: var(--text-dim);
+}
+.dialog.xac-nhan .about-list { border-top: 1px solid var(--border); }
+.dialog.xac-nhan .canh-bao-hop { margin: 0; border-radius: 0; }
+.dialog.xac-nhan .dialog-actions { padding: 14px 22px 18px; margin: 0; }
+.btn.nguy-hiem {
+  background: var(--danger); border-color: var(--danger); color: #fff;
+}
+.btn.nguy-hiem:hover { filter: brightness(1.1); border-color: var(--danger); }
+
 /* ---- hop thoai ket qua xuat / nhap ---- */
 .dialog.ket-qua { width: 460px; }
 .kq-head { display: flex; align-items: center; gap: 12px; padding: 20px 22px 14px; }

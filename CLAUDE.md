@@ -58,6 +58,9 @@ Cấu hình MySQL đọc từ biến môi trường, mặc định trỏ vào Do
 - **Kiểm tra giá trị thật, đừng kiểm tra "có hay không".** Đã ba lần một phép kiểm dạng
   `length > 0` báo đạt trong khi tính năng sai (gợi ý trả về tên bảng thay vì tên cột vì con trỏ
   đặt lệch một ký tự; `offsetLeft` sai gốc toạ độ). In số/chuỗi thật rồi so khớp chính xác.
+- **Đừng `await` lời gọi mở hộp thoại rồi mới chờ hộp đó.** `hoiXacNhan()` chỉ settle sau khi
+  người dùng bấm nút, nên `await run('...xoaBang(...)')` làm test tự chặn chính mình. Gọi rồi
+  kết thúc biểu thức bằng một chuỗi (`; 'da goi';`) để `run()` trả về ngay, sau đó mới `doiToi`.
 - **Kiểm thứ người dùng NHÌN THẤY, không phải thuộc tính JS phía sau.** `el.hidden` vẫn báo
   `true` trong khi phần tử hiện rành rành vì CSS đè lên — phải dùng
   `getComputedStyle(el).display`. Tương tự: đo `getBoundingClientRect()` thay vì tin vào
@@ -224,6 +227,18 @@ Những chỗ này từng tốn thời gian, đừng giẫm lại:
 - **Định danh luôn đi qua `mysql.escapeId()`.** Riêng ô `WHERE` ở tab dữ liệu được ghép thẳng
   vào SQL — **cố ý**, để người dùng viết điều kiện tự do như Navicat, không phải lỗ hổng cần vá.
 - `multipleStatements: false`. Tab truy vấn chạy một câu mỗi lần; bôi đen để chọn câu cần chạy.
+- **MySQL 8 cache thống kê bảng 24 tiếng.** `information_schema_stats_expiry` mặc định
+  86400 giây, nên `TABLE_ROWS` đứng yên cả ngày: thêm hàng chục nghìn dòng mà cây bên trái
+  vẫn báo số cũ, bấm "Làm mới" cũng vô ích — người dùng tưởng app cache. `getPool()` đặt
+  `SET SESSION information_schema_stats_expiry = 0` qua sự kiện `'connection'` của pool
+  (biến phiên, phải đặt cho từng connection). MariaDB không có biến này nên nuốt lỗi.
+  Lưu ý `TABLE_ROWS` **vẫn là ước lượng** của InnoDB kể cả sau khi tắt cache — đó là lý do
+  cây hiển thị dấu `~`. Số chính xác chỉ có khi mở bảng ra (tab dữ liệu chạy `COUNT(*)`).
+- **Thao tác phá huỷ dùng `hoiXacNhan()`, không dùng `confirm()`.** Hộp riêng hiện được số
+  dòng sắp mất và tên database, nên người dùng biết mình đang xoá cái gì. `db:dropTable` và
+  `db:truncateTable` **tự kiểm tra bảng có thật trong database đó không** rồi mới chạy —
+  không tin tên client gửi lên. Xoá bảng xong phải đóng tab đang mở của nó, nếu không lần
+  làm mới sau tab đó báo lỗi "table doesn't exist".
 - **Đừng dùng `app.getVersion()`.** Khi entry point không nằm cạnh `package.json` (ví dụ
   `test/harness.js`) thì hàm này trả về **phiên bản Electron**, không phải phiên bản app.
   Hộp Giới thiệu đọc thẳng `pkg.version`. Tương tự, `productName` chỉ nằm trong khối `build`
@@ -251,6 +266,15 @@ Những chỗ này từng tốn thời gian, đừng giẫm lại:
 
 ## Đóng gói
 
+- **`package.json` giữ semver ba số, hiển thị rút gọn hai số.** npm và electron-builder đều
+  từ chối `"1.5"` (*Invalid version*), nên `1.5.0` là bắt buộc bên trong. [lib/version.js](lib/version.js)
+  có `hienThi()` bỏ đuôi `.0`, dùng chung cho **cả ba chỗ**: tên tệp + `DEBIAN/control` trong
+  `build-deb.sh`, tên artifact trong `dong-goi.js`, và hộp Giới thiệu trong `main.js`.
+  Thêm chỗ thứ tư thì nhớ dùng lại hàm này, đừng tự cắt chuỗi.
+  AppImage phải **đổi tên sau khi build** vì macro `${version}` của electron-builder luôn
+  lấy semver đầy đủ.
+  **Cảnh báo khi đổi quy ước**: `dpkg` coi `1.5` < `1.5.0`. Đã phát hành bản ghi `1.5.0` rồi
+  thì bản `1.5` sau đó bị xem là cũ hơn và `apt` không cho cài đè.
 - **Version đi qua [scripts/dong-goi.js](scripts/dong-goi.js)**, không sửa tay `package.json`.
   `npm run dist:deb -- 0.2.0` (hoặc `patch`/`minor`/`major`) ghi version vào `package.json`
   **trước khi** build, vì version còn nằm trong `DEBIAN/control` và hộp thoại Giới thiệu —

@@ -9,12 +9,24 @@
 // Neu chi doi ten tep thi ban trong goi van bao version cu: muc Version cua
 // DEBIAN/control, va hop thoai Gioi thieu trong app deu doc tu package.json.
 const { spawnSync } = require('node:child_process');
+const { hienThi } = require('../lib/version');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const GOC = path.join(__dirname, '..');
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const TANG = new Set(['patch', 'minor', 'major']);
+// Cho viet tat: "1.5" la y 1.5.0, "2" la y 2.0.0. package.json bat buoc du
+// ba so nen phai bu vao, nhung van in ra de nguoi dung thay minh duoc hieu
+// thanh version nao.
+const VIET_TAT = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?(-[0-9A-Za-z.-]+)?$/;
+
+function buDuBaSo(v) {
+  if (TANG.has(v)) return v;
+  const m = VIET_TAT.exec(v);
+  if (!m) return v;          // de phan kiem tra ben duoi bao loi
+  return `${m[1]}.${m[2] || 0}.${m[3] || 0}${m[4] || ''}`;
+}
 
 function doc() {
   return JSON.parse(fs.readFileSync(path.join(GOC, 'package.json'), 'utf8'));
@@ -32,13 +44,16 @@ function chay(lenh, thamSo, moTa) {
   }
 }
 
-function datVersion(v) {
+function datVersion(dauVao) {
   const truoc = doc().version;
+  const v = buDuBaSo(dauVao);
   if (!TANG.has(v) && !SEMVER.test(v)) {
-    console.error(`Version không hợp lệ: "${v}"`);
-    console.error('Dùng dạng 1.2.3, hoặc patch / minor / major.');
+    console.error(`Version không hợp lệ: "${dauVao}"`);
+    console.error('Dùng dạng 1.2.3 (viết tắt 1.5 hay 2 cũng được),');
+    console.error('hoặc patch / minor / major.');
     process.exit(2);
   }
+  if (v !== dauVao) console.log(`Hiểu "${dauVao}" thành ${v}`);
   // Giao cho npm lo, no cap nhat ca package-lock.json.
   chay('npm', ['version', v, '--no-git-tag-version', '--allow-same-version'], 'đặt version');
   const sau = doc().version;
@@ -54,7 +69,7 @@ function main() {
   }
   if (version) datVersion(version);
 
-  const v = doc().version;
+  const v = hienThi(doc().version);
   console.log(`Đóng gói TableU ${v} (${dich})\n`);
 
   const raDeb = path.join(GOC, 'dist', `tableu_${v}_amd64.deb`);
@@ -65,6 +80,12 @@ function main() {
 
   if (dich === 'appimage' || dich === 'all') {
     chay('npx', ['electron-builder', '--linux', 'AppImage'], 'build AppImage');
+    // electron-builder dat ten theo macro ${version} nen van ra semver ba so;
+    // doi lai cho khop voi ten .deb.
+    const theoSemver = path.join(GOC, 'dist', `TableU-${doc().version}-x86_64.AppImage`);
+    if (theoSemver !== raApp && fs.existsSync(theoSemver)) {
+      fs.renameSync(theoSemver, raApp);
+    }
   }
   if (dich === 'deb' || dich === 'all') {
     chay('npx', ['electron-builder', '--linux', 'dir'], 'giải nén bản build');

@@ -337,7 +337,88 @@ function dbMenu(e, conn, dbName) {
   ]);
 }
 
+const xnDlg = $('#xacnhan-dialog');
+let xnTraLoi = null;
+
+function dongXacNhan(kq) {
+  if (xnTraLoi) { const f = xnTraLoi; xnTraLoi = null; f(kq); }
+  if (xnDlg.open) xnDlg.close();
+}
+$('#xn-huy').onclick = () => dongXacNhan(false);
+$('#xn-ok').onclick = () => dongXacNhan(true);
+xnDlg.addEventListener('cancel', (e) => { e.preventDefault(); dongXacNhan(false); });
+
+// Thay cho confirm() cua he thong: hien duoc so dong sap mat, nen nguoi dung
+// biet minh dang xoa cai gi thay vi bam OK theo quan tinh.
+function hoiXacNhan({ tieuDe, moTa, muc = [], nhanOk = 'Xóa' }) {
+  $('#xn-title').textContent = tieuDe;
+  $('#xn-mota').textContent = moTa;
+  $('#xn-ok').textContent = nhanOk;
+  const ds = $('#xn-list');
+  ds.textContent = '';
+  for (const [nhan, gt] of muc) {
+    ds.appendChild(el('dt', '', nhan));
+    ds.appendChild(el('dd', '', String(gt)));
+  }
+  ds.hidden = !muc.length;
+  return new Promise((res) => { xnTraLoi = res; xnDlg.showModal(); });
+}
+
+// Dong moi tab dang mo cua bang vua bi xoa, neu khong tab do se bao loi
+// "table doesn't exist" o lan lam moi tiep theo.
+function dongTabCuaBang(connId, dbName, bang) {
+  for (const t of [...state.tabs]) {
+    if (t.type === 'data' && t.connId === connId && t.database === dbName && t.table === bang) {
+      closeTab(t.id);
+    }
+  }
+}
+
+async function xoaBang(conn, dbName, bang, soDong) {
+  const dong = await hoiXacNhan({
+    tieuDe: `Xóa bảng ${bang}?`,
+    moTa: `Toàn bộ cấu trúc và dữ liệu của bảng sẽ bị xóa khỏi database.`,
+    muc: [['Database', dbName], ['Bảng', bang],
+      ...(soDong !== null && soDong !== undefined ? [['Số dòng (ước lượng)', `~${fmtNum(soDong)}`]] : [])],
+    nhanOk: 'Xóa bảng',
+  });
+  if (!dong) return;
+  try {
+    const r = unwrap(await api.db.dropTable(conn.id, dbName, bang));
+    dongTabCuaBang(conn.id, dbName, bang);
+    await refreshDb(conn, dbName);
+    status(`Đã xóa ${r.loai === 'VIEW' ? 'view' : 'bảng'} ${dbName}.${bang}`);
+  } catch (err) {
+    status(`Không xóa được: ${errText(err)}`, true);
+  }
+}
+
+async function lamRongBang(conn, dbName, bang, soDong) {
+  const dong = await hoiXacNhan({
+    tieuDe: `Xóa sạch dữ liệu bảng ${bang}?`,
+    moTa: 'Cấu trúc bảng giữ nguyên, toàn bộ dòng bị xóa và AUTO_INCREMENT quay về 1.',
+    muc: [['Database', dbName], ['Bảng', bang],
+      ...(soDong !== null && soDong !== undefined ? [['Số dòng (ước lượng)', `~${fmtNum(soDong)}`]] : [])],
+    nhanOk: 'Xóa sạch dữ liệu',
+  });
+  if (!dong) return;
+  try {
+    const r = unwrap(await api.db.truncateTable(conn.id, dbName, bang));
+    await refreshDb(conn, dbName);
+    for (const t of state.tabs) {
+      if (t.type === 'data' && t.connId === conn.id && t.database === dbName
+          && t.table === bang && t.onRefresh) t.onRefresh();
+    }
+    status(`Đã xóa ${fmtNum(r.soDongDaXoa)} dòng khỏi ${dbName}.${bang}`);
+  } catch (err) {
+    status(`Không xóa được dữ liệu: ${errText(err)}`, true);
+  }
+}
+
 function tableMenu(e, conn, dbName, table) {
+  const dbSt = (state.nodes[conn.id] || {}).dbs || {};
+  const bang = ((dbSt[dbName] || {}).tables || []).find((t) => t.name === table);
+  const soDong = bang ? bang.estRows : null;
   showMenu(e, [
     { label: 'Xem dữ liệu', run: () => openDataTab(conn, dbName, table) },
     { label: 'Xem cấu trúc', run: () => openDataTab(conn, dbName, table, 'structure') },
@@ -345,6 +426,11 @@ function tableMenu(e, conn, dbName, table) {
     { label: 'SELECT * trong tab query', run: () => openQueryTab(conn, dbName, `SELECT *\nFROM \`${table}\`\nLIMIT 200;`) },
     '-',
     { label: 'Xuất bảng ra SQL…', run: () => moXuat(conn, dbName, table) },
+    '-',
+    { label: 'Xóa sạch dữ liệu (TRUNCATE)…', danger: true,
+      run: () => lamRongBang(conn, dbName, table, soDong) },
+    { label: 'Xóa bảng (DROP)…', danger: true,
+      run: () => xoaBang(conn, dbName, table, soDong) },
     '-',
     { label: 'Sao chép tên bảng', run: () => navigator.clipboard.writeText(table) },
   ]);
@@ -1635,6 +1721,6 @@ reloadConnections().then(() => {
 });
 
 /* Hook gỡ lỗi: chỉ dùng từ DevTools (Ctrl+Shift+I). */
-window.__tableu = { state, reloadConnections, toggleConn, toggleDb, openDataTab, openQueryTab, renderTree, moGioiThieu, moXuat, moNhap, dongCacTab, moTabTruyVanMoi, moTimKiem, dongTimKiem, tim };
+window.__tableu = { state, reloadConnections, toggleConn, toggleDb, openDataTab, openQueryTab, renderTree, moGioiThieu, moXuat, moNhap, dongCacTab, moTabTruyVanMoi, moTimKiem, dongTimKiem, tim, xoaBang, lamRongBang, hoiXacNhan };
 
 })();

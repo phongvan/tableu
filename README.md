@@ -37,6 +37,10 @@ npm run dist:deb -- minor     # 0.1.0 -> 0.2.0
 npm run dist:deb -- major     # 0.1.0 -> 1.0.0
 ```
 
+Version hiển thị rút gọn còn hai số khi số cuối là 0: `1.5.0` ra thành `tableu_1.5_amd64.deb`
+và hộp Giới thiệu hiện `v1.5`. Bên trong `package.json` vẫn là `1.5.0` vì npm bắt buộc semver
+ba số. Có số thứ ba khác 0 thì giữ nguyên: `1.5.2` → `tableu_1.5.2_amd64.deb`.
+
 Version truyền vào được **ghi thẳng vào `package.json`** (và `package-lock.json`) trước khi
 build, chứ không chỉ đổi tên tệp. Cần thế vì version còn nằm ở hai chỗ khác bên trong gói:
 mục `Version:` của `DEBIAN/control`, và hộp thoại Giới thiệu trong app — cả hai đều đọc từ
@@ -106,10 +110,21 @@ Trước khi phát hành cho người khác, sửa `homepage` trong `package.jso
 | Tab cấu trúc | Danh sách cột (kiểu, NULL, khóa, mặc định, ghi chú) + chỉ mục |
 | Tab DDL | `SHOW CREATE TABLE` |
 | Tab truy vấn | Soạn SQL **có tô màu cú pháp và gợi ý tên bảng/cột**, `Ctrl+Enter` để chạy, bôi đen để chỉ chạy phần chọn, **giới hạn số dòng trả về**, xuất CSV |
+| Chuột phải vào bảng | Xem dữ liệu/cấu trúc, xuất SQL, **xóa sạch dữ liệu (TRUNCATE)**, **xóa bảng (DROP)** |
 | Thanh tab | Chuột phải vào tab để đóng tab này / các tab khác / tất cả. Nút **+ Query** mở tab truy vấn mới |
 | Khác | Giao diện sáng/tối, menu chuột phải, kéo đổi rộng cây/cao ô soạn thảo |
 | Xuất / nhập SQL | Xuất bảng hoặc cả database ra `.sql`, nhập tệp `.sql` vào database |
 | Trợ giúp → Giới thiệu | Tên app, phiên bản, tác giả, email, giấy phép |
+
+## Số dòng trên cây bên trái
+
+Số cạnh tên bảng có dấu `~` vì đó là **ước lượng** của InnoDB, không phải `COUNT(*)`.
+Số chính xác hiện ở chân cửa sổ khi bạn mở bảng ra.
+
+MySQL 8 còn cache thống kê này trong data dictionary **24 tiếng**
+(`information_schema_stats_expiry = 86400`), nên trước đây thêm bao nhiêu dòng thì cây vẫn
+báo số cũ và bấm "Làm mới danh sách bảng" cũng không ăn thua. App nay tự đặt biến đó về 0
+cho mỗi kết nối, nên "Làm mới" cho số mới ngay.
 
 ## Tìm trong bảng (Ctrl+F)
 
