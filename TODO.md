@@ -49,11 +49,11 @@ lúc chạy thật vẫn cần một máy Windows để kiểm: hành vi cửa s
 
 Từ roadmap trước đó, xếp theo mức hữu ích hằng ngày:
 
-1. **Xem đầy đủ giá trị một ô** — ô đang bị cắt hai lần: CSS `max-width: 420px` và
+1. ~~**Xem đầy đủ giá trị một ô**~~ — ĐÃ LÀM (bảng chi tiết ô) — ô đang bị cắt hai lần: CSS `max-width: 420px` và
    `MAX_CELL` 4096 ký tự trong `main.js`. Cột TEXT/JSON dài không đọc được.
 2. **Lịch sử truy vấn** — append vào một tệp JSON trong `userData`.
-3. **Tìm trong kết quả + copy bằng bàn phím** — `Ctrl+F` lọc trong lưới, mũi tên di chuyển ô.
-4. **Thêm dòng mới** — hiện chỉ sửa và xóa được, chưa thêm.
+3. ~~**Tìm trong kết quả + copy bằng bàn phím**~~ — ĐÃ LÀM — `Ctrl+F` lọc trong lưới, mũi tên di chuyển ô.
+4. ~~**Thêm dòng mới**~~ — ĐÃ LÀM — hiện chỉ sửa và xóa được, chưa thêm.
 5. **Chạy nhiều câu lệnh một lượt** — `multipleStatements` đang `false`.
 6. **Xuất SQL INSERT / JSON** — hiện chỉ có CSV.
 7. **Mật khẩu vào GNOME Keyring** — gói `.deb` đã khai báo phụ thuộc `libsecret-1-0`.

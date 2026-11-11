@@ -23,8 +23,12 @@ contextBridge.exposeInMainWorld('api', {
     schema: (connId, database) => invoke('db:schema', connId, database),
     updateCell: (connId, database, table, keyValues, column, value) =>
       invoke('db:updateCell', connId, database, table, keyValues, column, value),
+    cellValue: (connId, database, table, keyValues, column) =>
+      invoke('db:cellValue', connId, database, table, keyValues, column),
     dropTable: (connId, database, bang) => invoke('db:dropTable', connId, database, bang),
     truncateTable: (connId, database, bang) => invoke('db:truncateTable', connId, database, bang),
+    insertRow: (connId, database, table, giaTri) =>
+      invoke('db:insertRow', connId, database, table, giaTri),
     deleteRow: (connId, database, table, keyValues) =>
       invoke('db:deleteRow', connId, database, table, keyValues),
   },

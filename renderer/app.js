@@ -427,6 +427,12 @@ function tableMenu(e, conn, dbName, table) {
     '-',
     { label: 'Xuất bảng ra SQL…', run: () => moXuat(conn, dbName, table) },
     '-',
+    { label: 'Thêm dòng mới…', run: () => moThemDong(conn, dbName, table, async () => {
+      const t = state.tabs.find((x) => x.type === 'data' && x.connId === conn.id
+        && x.database === dbName && x.table === table);
+      if (t && t.onRefresh) t.onRefresh();
+    }) },
+    '-',
     { label: 'Xóa sạch dữ liệu (TRUNCATE)…', danger: true,
       run: () => lamRongBang(conn, dbName, table, soDong) },
     { label: 'Xóa bảng (DROP)…', danger: true,
@@ -584,16 +590,23 @@ const KIND_LABEL = {
 
 function cellContent(td, v) {
   td.textContent = '';
-  if (v === null) td.appendChild(el('span', 'null', 'NULL'));
-  else if (typeof v === 'object' && v.blob) td.appendChild(el('span', 'blob', v.blob));
-  else td.textContent = v;
+  td.classList.remove('bi-cat');
+  if (v === null) { td.appendChild(el('span', 'null', 'NULL')); return; }
+  if (typeof v === 'object' && v.blob) { td.appendChild(el('span', 'blob', v.blob)); return; }
+  if (typeof v === 'object' && v.cat) {
+    td.textContent = v.text;
+    td.classList.add('bi-cat');
+    td.title = `Dài ${fmtNum(v.dai)} ký tự — mở bảng chi tiết để xem đầy đủ`;
+    return;
+  }
+  td.textContent = v;
 }
 
 // Gia tri tho de do vao o soan thao. NULL -> chuoi rong, nhung hai cai nay
 // khac nhau khi ghi xuong: xem commitEdit().
 function cellRaw(v) {
   if (v === null) return '';
-  if (typeof v === 'object' && v.blob) return v.blob;
+  if (typeof v === 'object') return v.blob || v.text || '';
   return String(v);
 }
 
@@ -643,6 +656,7 @@ function renderGrid(container, result, opts = {}) {
   container.appendChild(table);
 
   if (opts.edit) attachEditing(table, result, opts.edit);
+  ganChonO(container, table, opts.edit);
   setTimeout(timKiemLamMoi, 0);   // luoi vua dung lai, cac <mark> cu da mat
 
   if (result.rows.length === 0) {
@@ -680,6 +694,8 @@ function attachEditing(table, result, edit) {
     const giaTri = result.rows[v.r][v.c];
     const items = [
       { label: 'Sao chép giá trị', run: () => navigator.clipboard.writeText(cellRaw(giaTri)) },
+      { label: 'Sao chép vùng chọn', run: () => copyChon(false) },
+      { label: 'Sao chép kèm tiêu đề cột', run: () => copyChon(true) },
       { label: 'Sao chép tên cột', run: () => navigator.clipboard.writeText(col.name) },
     ];
     if (edit.suaDuocCot(v.c) === true) {
@@ -869,6 +885,7 @@ function openDataTab(conn, database, table, initialView) {
     whereCm.showHint({ completeSingle: false });
   });
   const btnApply = el('button', 'btn', 'Lọc');
+  btnApply.title = 'Áp dụng bộ lọc (Enter)';
   const sel = el('select', 'input');
   for (const n of [100, 200, 500, 1000]) {
     const o = el('option', '', `${n} dòng`);
@@ -880,11 +897,25 @@ function openDataTab(conn, database, table, initialView) {
   btnCsv.title = 'Xuất kết quả hiện tại ra CSV';
   const badge = el('span', 'badge-ro', '');
   badge.hidden = true;
-  bar.append(btnRefresh, el('div', 'tb-sep'), whereWrap, btnApply, el('div', 'tb-sep'), sel, btnCsv, badge);
+  const btnCt = el('button', 'btn ghost', '⊟');
+  btnCt.title = 'Bảng chi tiết ô đang chọn';
+  btnCt.onclick = () => {
+    ct.hop.hidden = !ct.hop.hidden;
+    if (!ct.hop.hidden) capNhatChiTiet();
+  };
+  const btnThem = el('button', 'btn', '+ Dòng');
+  btnThem.title = 'Thêm dòng mới vào bảng';
+  btnThem.onclick = () => moThemDong(conn, database, table, () => loadData());
+  bar.append(btnRefresh, el('div', 'tb-sep'), whereWrap, btnApply,
+             el('div', 'tb-sep'), sel, btnThem, btnCsv, btnCt, badge);
   pane.appendChild(bar);
 
   const body = el('div', 'grid-wrap');
   pane.appendChild(body);
+
+  const ct = taoBangChiTiet();
+  pane.__chiTiet = ct;
+  pane.appendChild(ct.hop);
 
   // footer
   const footer = el('div', 'pane-footer');
@@ -930,6 +961,7 @@ function openDataTab(conn, database, table, initialView) {
       });
 
       badge.hidden = !!meta.suaDuoc;
+      btnThem.hidden = !meta.suaDuoc;   // view / bang khong khoa chinh thi khong them duoc
       badge.textContent = 'chỉ đọc';
       badge.title = `Không sửa được trên lưới: ${meta.lyDo || 'không rõ lý do'}.`;
 
@@ -1150,12 +1182,23 @@ function openQueryTab(conn, database, initialSql) {
   limSel.title = 'Chặn câu lệnh không có LIMIT kéo về cả bảng và làm treo cửa sổ';
   const timing = el('span', '');
   timing.style.cssText = 'margin-left:auto;color:var(--text-dim);font-size:12px';
+  const btnCt = el('button', 'btn ghost', '⊟');
+  btnCt.title = 'Bảng chi tiết ô đang chọn';
+  btnCt.onclick = () => {
+    ct.hop.hidden = !ct.hop.hidden;
+    if (!ct.hop.hidden) capNhatChiTiet();
+  };
   bar.append(btnRun, el('div', 'tb-sep'), dbLabel, dbSel,
-             el('div', 'tb-sep'), limLabel, limSel, el('div', 'tb-sep'), btnCsv, timing);
+             el('div', 'tb-sep'), limLabel, limSel,
+             el('div', 'tb-sep'), btnCsv, btnCt, timing);
   pane.appendChild(bar);
 
   const body = el('div', 'grid-wrap');
   pane.appendChild(body);
+
+  const ct = taoBangChiTiet();
+  pane.__chiTiet = ct;
+  pane.appendChild(ct.hop);
 
   function fillDatabases() {
     const st = state.nodes[conn.id];
@@ -1329,6 +1372,370 @@ api.onMenu('menu:refresh', () => {
   const active = state.tabs.find((t) => t.id === state.activeTabId);
   if (active && active.onRefresh) active.onRefresh();
 });
+
+/* --------------------------------------------------------- thêm dòng mới */
+
+const tdDlg = $('#themdong-dialog');
+let tdNgucanh = null;     // { conn, dbName, bang, onXong }
+
+$('#td-huy').onclick = () => tdDlg.close();
+
+async function moThemDong(conn, dbName, bang, onXong) {
+  let cot;
+  try {
+    cot = unwrap(await api.db.columns(conn.id, dbName, bang));
+  } catch (e) {
+    status(errText(e), true);
+    return;
+  }
+
+  tdNgucanh = { conn, dbName, bang, onXong };
+  $('#td-title').textContent = `Thêm dòng vào ${bang}`;
+  $('#td-msg').textContent = '';
+  const hop = $('#td-cot');
+  hop.textContent = '';
+
+  for (const c of cot) {
+    // Cot sinh tu bieu thuc thi MySQL tu tinh, khong cho dat gia tri
+    const sinhTuDong = /\b(VIRTUAL|STORED) GENERATED\b/i.test(c.extra || '');
+    const tuTang = /auto_increment/i.test(c.extra || '');
+
+    const hang = el('div', `td-hang ${sinhTuDong ? 'khoa' : ''}`);
+    const ten = el('div', 'td-ten');
+    ten.appendChild(document.createTextNode(c.field));
+    if (!c.nullable && c.default === null && !tuTang && !sinhTuDong) {
+      ten.appendChild(el('span', 'bat-buoc', '*'));
+    }
+    ten.appendChild(el('small', '', c.type));
+    ten.title = `${c.field} · ${c.type}${c.extra ? ` · ${c.extra}` : ''}`;
+
+    const o = el('input', 'input');
+    o.type = 'text';
+    o.dataset.cot = c.field;
+    o.spellcheck = false;
+    if (sinhTuDong) { o.disabled = true; o.placeholder = 'sinh tự động'; }
+    else if (tuTang) o.placeholder = 'auto_increment';
+    else if (c.default !== null) o.placeholder = `mặc định: ${c.default}`;
+    else if (c.nullable) o.placeholder = 'để trống = NULL';
+
+    hang.append(ten, o);
+
+    if (c.nullable && !sinhTuDong) {
+      const nhan = el('label', 'td-null');
+      const tick = el('input', '');
+      tick.type = 'checkbox';
+      tick.dataset.nullCho = c.field;
+      tick.onchange = () => { o.disabled = tick.checked; if (tick.checked) o.value = ''; };
+      nhan.append(tick, document.createTextNode('NULL'));
+      hang.appendChild(nhan);
+    } else {
+      hang.appendChild(el('span', '', ''));
+    }
+    hop.appendChild(hang);
+  }
+
+  tdDlg.showModal();
+  const dau = hop.querySelector('input.input:not(:disabled)');
+  if (dau) dau.focus();
+}
+
+$('#themdong-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!tdNgucanh) return;
+  const { conn, dbName, bang, onXong } = tdNgucanh;
+
+  // Bo trong = khong nhac toi cot do, de MySQL dung mac dinh / auto_increment.
+  // Tick NULL = dat NULL that su. Hai thu nay khac nhau.
+  const giaTri = {};
+  for (const o of $('#td-cot').querySelectorAll('input.input')) {
+    const ten = o.dataset.cot;
+    const tick = $(`#td-cot input[data-null-cho="${CSS.escape(ten)}"]`);
+    if (tick && tick.checked) { giaTri[ten] = null; continue; }
+    if (o.disabled || o.value === '') continue;
+    giaTri[ten] = o.value;
+  }
+
+  const msg = $('#td-msg');
+  msg.className = 'dialog-msg';
+  msg.textContent = 'Đang thêm…';
+  try {
+    const r = unwrap(await api.db.insertRow(conn.id, dbName, bang, giaTri));
+    tdDlg.close();
+    tdNgucanh = null;
+    status(r.insertId && r.insertId !== '0'
+      ? `Đã thêm 1 dòng vào ${bang} (id = ${r.insertId})`
+      : `Đã thêm 1 dòng vào ${bang}`);
+    if (onXong) await onXong();
+  } catch (err) {
+    msg.className = 'dialog-msg error';
+    msg.textContent = errText(err);
+  }
+});
+
+/* ----------------------------------------- chọn ô trong lưới + chi tiết */
+
+// Luoi truoc day khong co khai niem "o dang chon": khong di duoc bang ban
+// phim, khong copy duoc ca dong. Vung chon la mot hinh chu nhat tu o neo
+// den o dang focus.
+const chon = { wrap: null, r: -1, c: -1, rNeo: -1, cNeo: -1 };
+
+const soDongLuoi = (w) => w.querySelectorAll('tbody tr').length;
+const soCotLuoi = (w) => Math.max(w.querySelectorAll('thead th').length - 1, 0);
+const dongTai = (w, r) => w.querySelector(`tbody tr[data-r="${r}"]`);
+// con dau tien cua <tr> la cot so thu tu, nen cot j nam o children[j + 1]
+const oTai = (w, r, c) => { const tr = dongTai(w, r); return tr ? tr.children[c + 1] : null; };
+
+function xoaVungChon(w) {
+  if (!w) return;
+  for (const td of w.querySelectorAll('td.o-chon, td.trong-vung')) {
+    td.classList.remove('o-chon', 'trong-vung');
+  }
+}
+
+function boChon() {
+  xoaVungChon(chon.wrap);
+  chon.wrap = null; chon.r = -1; chon.c = -1;
+  capNhatChiTiet();
+}
+
+function veVungChon() {
+  const { wrap: w, r, c, rNeo, cNeo } = chon;
+  if (!w || r < 0) return;
+  xoaVungChon(w);
+  const r1 = Math.min(r, rNeo); const r2 = Math.max(r, rNeo);
+  const c1 = Math.min(c, cNeo); const c2 = Math.max(c, cNeo);
+  // Duyet thang children thay vi querySelector tung o: vung chon co the
+  // la ca luoi 1000x54.
+  for (let i = r1; i <= r2; i++) {
+    const tr = dongTai(w, i);
+    if (!tr) continue;
+    for (let j = c1; j <= c2; j++) {
+      const td = tr.children[j + 1];
+      if (td) td.classList.add('trong-vung');
+    }
+  }
+  const o = oTai(w, r, c);
+  if (o) {
+    o.classList.add('o-chon');
+    o.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+  capNhatChiTiet();
+}
+
+function datO(w, r, c, moRong) {
+  const nd = soDongLuoi(w); const nc = soCotLuoi(w);
+  if (!nd || !nc) return;
+  chon.wrap = w;
+  chon.r = Math.max(0, Math.min(r, nd - 1));
+  chon.c = Math.max(0, Math.min(c, nc - 1));
+  if (!moRong) { chon.rNeo = chon.r; chon.cNeo = chon.c; }
+  veVungChon();
+}
+
+function vungChon() {
+  const { r, c, rNeo, cNeo } = chon;
+  return {
+    r1: Math.min(r, rNeo), r2: Math.max(r, rNeo),
+    c1: Math.min(c, cNeo), c2: Math.max(c, cNeo),
+  };
+}
+
+// Tab va xuong dong trong gia tri se pha vo dinh dang TSV khi dan vao Excel
+const tsvAnToan = (t) => String(t).replace(/[\t\r\n]+/g, ' ');
+
+function chonThanhTsv(kemTieuDe) {
+  const w = chon.wrap;
+  if (!w || chon.r < 0) return '';
+  const { r1, r2, c1, c2 } = vungChon();
+  const ra = [];
+  if (kemTieuDe) {
+    // Lay ten tu metadata, khong cao DOM: <th> cua cot khoa chinh co <span>⚿
+    // dung truoc ten, nen childNodes[0] la bieu tuong chu khong phai ten cot.
+    const cot = (tabCuaLuoi(w).result || {}).columns || [];
+    const d = [];
+    for (let j = c1; j <= c2; j++) d.push(tsvAnToan((cot[j] || {}).name || ''));
+    ra.push(d.join('\t'));
+  }
+  for (let i = r1; i <= r2; i++) {
+    const tr = dongTai(w, i);
+    if (!tr) continue;
+    const d = [];
+    for (let j = c1; j <= c2; j++) {
+      const td = tr.children[j + 1];
+      d.push(td ? tsvAnToan(td.textContent) : '');
+    }
+    ra.push(d.join('\t'));
+  }
+  return ra.join('\n');
+}
+
+async function copyChon(kemTieuDe) {
+  const t = chonThanhTsv(kemTieuDe);
+  if (!t) return;
+  await navigator.clipboard.writeText(t);
+  const { r1, r2, c1, c2 } = vungChon();
+  const so = (r2 - r1 + 1) * (c2 - c1 + 1);
+  status(`Đã chép ${fmtNum(so)} ô (${fmtNum(r2 - r1 + 1)} dòng × ${c2 - c1 + 1} cột)`);
+}
+
+/* ---- bảng chi tiết: xem đầy đủ giá trị ô đang chọn ---- */
+
+function taoBangChiTiet() {
+  const hop = el('div', 'chi-tiet');
+  hop.hidden = true;
+  const dau = el('div', 'ct-dau');
+  const nhan = el('span', 'ct-nhan', 'Chi tiết ô');
+  const btnJson = el('button', 'btn ghost ct-nut', 'JSON');
+  btnJson.title = 'Định dạng lại cho dễ đọc';
+  const btnChep = el('button', 'btn ghost ct-nut', 'Sao chép');
+  const btnDong = el('button', 'btn ghost ct-nut', '✕');
+  const giua = el('div', '');
+  giua.style.flex = '1';
+  dau.append(nhan, giua, btnJson, btnChep, btnDong);
+  const than = el('pre', 'ct-than', '');
+  hop.append(dau, than);
+
+  let thoRaw = '';
+  const datNoiDung = (t) => { thoRaw = t; than.textContent = t; };
+
+  btnChep.onclick = async () => {
+    await navigator.clipboard.writeText(thoRaw);
+    status('Đã chép giá trị ô');
+  };
+  btnJson.onclick = () => {
+    try {
+      datNoiDung(JSON.stringify(JSON.parse(thoRaw), null, 2));
+      status('Đã định dạng JSON');
+    } catch {
+      status('Giá trị này không phải JSON hợp lệ', true);
+    }
+  };
+  btnDong.onclick = () => { hop.hidden = true; };
+
+  return { hop, nhan, datNoiDung, moRa: () => { hop.hidden = false; } };
+}
+
+// Bang chi tiet nam trong tung pane; tim theo pane cua luoi dang chon.
+function bangChiTietCua(w) {
+  const p = w && w.closest('.pane');
+  return p ? p.__chiTiet : null;
+}
+
+let capNhatSo = 0;
+async function capNhatChiTiet() {
+  const ct = bangChiTietCua(chon.wrap);
+  if (!ct || ct.hop.hidden) return;
+  const lan = ++capNhatSo;
+  const w = chon.wrap;
+  if (!w || chon.r < 0) { ct.nhan.textContent = 'Chi tiết ô'; ct.datNoiDung(''); return; }
+
+  const tab = state.tabs.find((t) => t.pane === w.closest('.pane'));
+  const kq = tab && tab.result;
+  const col = kq && kq.columns[chon.c];
+  const gt = kq && kq.rows[chon.r] ? kq.rows[chon.r][chon.c] : undefined;
+  ct.nhan.textContent = col ? `${col.name} · dòng ${fmtNum(chon.r + 1)}` : 'Chi tiết ô';
+
+  if (gt === null) { ct.datNoiDung('NULL'); return; }
+  if (gt === undefined) { ct.datNoiDung(''); return; }
+
+  // Gia tri day du chi co khi hoi lai DB — luoi da cat o MAX_CELL.
+  const canTaiThem = typeof gt === 'object' && gt.cat
+    && tab.type === 'data' && kq.keys && kq.keys[chon.r];
+  if (!canTaiThem) { ct.datNoiDung(cellRaw(gt)); return; }
+
+  ct.datNoiDung(`${gt.text}\n\n… đang tải đầy đủ ${fmtNum(gt.dai)} ký tự …`);
+  try {
+    const r = unwrap(await api.db.cellValue(
+      tab.connId, tab.database, tab.table, kq.keys[chon.r], col.name));
+    if (lan !== capNhatSo) return;          // nguoi dung da chuyen o khac
+    ct.datNoiDung(r.giaTri === null ? 'NULL' : r.giaTri);
+    if (r.cat) status(`Ô dài ${fmtNum(r.dai)} ký tự — chỉ hiện 2 MB đầu`);
+  } catch (e) {
+    if (lan === capNhatSo) ct.datNoiDung(`${gt.text}\n\n(không tải được phần còn lại: ${errText(e)})`);
+  }
+}
+
+function ganChonO(wrap, table, edit) {
+  if (chon.wrap === wrap) boChon();     // luoi vua dung lai, chi so cu vo nghia
+  // tabindex de .grid-wrap nhan duoc keydown: gan handler toan cuc se cuop
+  // phim mui ten cua o soan thao va CodeMirror.
+  wrap.tabIndex = -1;
+
+  const viTri = (e) => {
+    const td = e.target.closest('td');
+    if (!td || !wrap.contains(td)) return null;
+    const tr = td.parentElement;
+    const r = Number(tr.dataset.r);
+    if (!Number.isInteger(r)) return null;
+    if (td.classList.contains('rownum')) return { r, c: 0, caDong: true };
+    const c = Number(td.dataset.c);
+    return Number.isInteger(c) ? { r, c, caDong: false } : null;
+  };
+
+  table.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    const v = viTri(e);
+    if (!v) return;
+    wrap.focus({ preventScroll: true });
+    if (v.caDong) {
+      datO(wrap, v.r, 0, false);
+      chon.cNeo = soCotLuoi(wrap) - 1;    // bam cot # = chon ca dong
+      veVungChon();
+      return;
+    }
+    datO(wrap, v.r, v.c, e.shiftKey);
+  });
+
+  wrap.addEventListener('keydown', (e) => {
+    if (chon.wrap !== wrap || chon.r < 0) return;
+    const nd = soDongLuoi(wrap); const nc = soCotLuoi(wrap);
+    const buoc = Math.max(1, Math.floor(wrap.clientHeight / 32) - 1);
+    const di = (dr, dc) => {
+      e.preventDefault();
+      datO(wrap, chon.r + dr, chon.c + dc, e.shiftKey);
+    };
+    switch (e.key) {
+      case 'ArrowUp': return di(-1, 0);
+      case 'ArrowDown': return di(1, 0);
+      case 'ArrowLeft': return di(0, -1);
+      case 'ArrowRight': return di(0, 1);
+      case 'PageUp': return di(-buoc, 0);
+      case 'PageDown': return di(buoc, 0);
+      case 'Home':
+        e.preventDefault();
+        return e.ctrlKey ? datO(wrap, 0, 0, e.shiftKey) : datO(wrap, chon.r, 0, e.shiftKey);
+      case 'End':
+        e.preventDefault();
+        return e.ctrlKey
+          ? datO(wrap, nd - 1, nc - 1, e.shiftKey)
+          : datO(wrap, chon.r, nc - 1, e.shiftKey);
+      case 'Escape':
+        e.preventDefault();
+        return boChon();
+      default: break;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      chon.r = 0; chon.c = 0; chon.rNeo = nd - 1; chon.cNeo = nc - 1;
+      veVungChon();
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+      e.preventDefault();
+      copyChon(e.shiftKey);
+    } else if ((e.key === 'Enter' || e.key === 'F2') && edit) {
+      const vi = edit.suaDuocCot(chon.c);
+      if (vi !== true) { status(vi, true); return; }
+      e.preventDefault();
+      const td = oTai(wrap, chon.r, chon.c);
+      if (td) beginEdit({ td, tr: td.parentElement, r: chon.r, c: chon.c },
+        tabCuaLuoi(wrap).result, edit);
+    }
+  });
+}
+
+function tabCuaLuoi(wrap) {
+  const p = wrap.closest('.pane');
+  return state.tabs.find((t) => t.pane === p) || {};
+}
 
 /* ------------------------------------------- tìm trong lưới (Ctrl+F) */
 
@@ -1721,6 +2128,6 @@ reloadConnections().then(() => {
 });
 
 /* Hook gỡ lỗi: chỉ dùng từ DevTools (Ctrl+Shift+I). */
-window.__tableu = { state, reloadConnections, toggleConn, toggleDb, openDataTab, openQueryTab, renderTree, moGioiThieu, moXuat, moNhap, dongCacTab, moTabTruyVanMoi, moTimKiem, dongTimKiem, tim, xoaBang, lamRongBang, hoiXacNhan };
+window.__tableu = { state, reloadConnections, toggleConn, toggleDb, openDataTab, openQueryTab, renderTree, moGioiThieu, moXuat, moNhap, dongCacTab, moTabTruyVanMoi, moTimKiem, dongTimKiem, tim, xoaBang, lamRongBang, hoiXacNhan, chon, datO, copyChon, chonThanhTsv, moThemDong };
 
 })();

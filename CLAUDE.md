@@ -58,6 +58,9 @@ Cấu hình MySQL đọc từ biến môi trường, mặc định trỏ vào Do
 - **Kiểm tra giá trị thật, đừng kiểm tra "có hay không".** Đã ba lần một phép kiểm dạng
   `length > 0` báo đạt trong khi tính năng sai (gợi ý trả về tên bảng thay vì tên cột vì con trỏ
   đặt lệch một ký tự; `offsetLeft` sai gốc toạ độ). In số/chuỗi thật rồi so khớp chính xác.
+- **Chọn phần tử theo `title`/id, đừng theo vị trí.** `querySelectorAll('.btn')[3]` gãy ngay
+  khi thêm một nút vào thanh công cụ — đã làm hỏng suite 10 lúc thêm nút "+ Dòng". Nút nào
+  cần test chạm tới thì cho nó `title` rồi chọn bằng `[title*="…"]`.
 - **Đừng `await` lời gọi mở hộp thoại rồi mới chờ hộp đó.** `hoiXacNhan()` chỉ settle sau khi
   người dùng bấm nút, nên `await run('...xoaBang(...)')` làm test tự chặn chính mình. Gọi rồi
   kết thúc biểu thức bằng một chuỗi (`; 'da goi';`) để `run()` trả về ngay, sau đó mới `doiToi`.
@@ -199,6 +202,28 @@ Chặn ở `MAX_TO_SANG` (2.000) chỗ tô sáng nhưng vẫn đếm đủ, hi�
 
 `renderGrid()` gọi `timKiemLamMoi()` sau khi vẽ: lưới dựng lại thì mọi `<mark>` biến mất và
 các tham chiếu `td` đã lưu thành rác, nên phải tìm lại chứ không hoàn nguyên.
+
+**Chọn ô trong lưới.** `chon = {wrap, r, c, rNeo, cNeo}` — vùng chọn là hình chữ nhật từ ô
+neo tới ô đang focus. Bàn phím gắn vào `.grid-wrap` (có `tabIndex = -1`), **không gắn toàn
+cục**: handler toàn cục sẽ cướp phím mũi tên của ô soạn thảo và CodeMirror.
+
+`veVungChon()` duyệt `tr.children[c + 1]` thay vì `querySelector` từng ô — vùng chọn có thể
+là cả lưới 1000×54. Con đầu của `<tr>` là cột số thứ tự nên cột `j` nằm ở `children[j + 1]`.
+
+`Ctrl+C` xuất TSV (dán thẳng vào Excel được); tab và xuống dòng trong giá trị bị thay bằng
+dấu cách, nếu không định dạng vỡ. Tên cột cho dòng tiêu đề lấy từ `result.columns`,
+**đừng cào từ `<th>`** — cột khóa chính có `<span>⚿` đứng trước nên `childNodes[0]` là
+biểu tượng chứ không phải tên.
+
+**Bảng chi tiết ô.** `cell()` cắt ở `MAX_CELL` (4096) và trả `{text, cat: true, dai}` để UI
+biết đây là bản cắt. Muốn giá trị đầy đủ phải hỏi lại DB qua `db:cellValue` — chỉ làm được ở
+tab dữ liệu vì cần `keys`. `capNhatChiTiet()` dùng biến đếm `capNhatSo` để bỏ kết quả về muộn
+khi người dùng đã chuyển sang ô khác.
+
+**Thêm dòng.** Hộp `#themdong-dialog` dựng động từ `db:columns`. Ba trạng thái khác nhau:
+để trống = **bỏ hẳn cột** khỏi INSERT (để MySQL dùng mặc định / auto_increment), tick NULL =
+`NULL` thật, gõ gì đó = giá trị đó. Lỗi thì **giữ hộp mở** để sửa lại, không nuốt mất dữ liệu
+đã gõ. Server vẫn chặn cột bịa và cột sinh tự động, không tin form.
 
 **Tab.** `state.tabs` giữ các object `{id, type: 'data'|'query', connId, database, pane, ...}`;
 mỗi tab tự sở hữu DOM pane của nó và có thể có `onFocus` / `onRefresh`. `renderTabs()` dựng lại

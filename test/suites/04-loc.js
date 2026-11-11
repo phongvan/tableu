@@ -56,7 +56,7 @@ async function chay(ctx) {
   // --- o loc van lam dung viec cu ---
   await run(`(() => { document.querySelectorAll('.CodeMirror-hints').forEach(n => n.remove());
     ${CM}.setValue('status = 1');
-    document.querySelectorAll('.pane.active .pane-toolbar .btn')[1].click(); })()`);
+    document.querySelector('.pane.active .pane-toolbar .btn[title*="bộ lọc"]').click(); })()`);
   await doiToi(`(window.__tableu.state.tabs.slice(-1)[0].result || {}).total === 8`,
                'ap dung duoc bo loc');
   const t = await run(`window.__tableu.state.tabs.slice(-1)[0].result.total`);

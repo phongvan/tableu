@@ -185,6 +185,48 @@ biết đã chạy tới đâu. Tick "Bỏ qua câu lệnh lỗi" thì nó chạ
 dấu chấm phẩy nằm trong chuỗi, trong chú thích, và trong thân `TRIGGER`/`PROCEDURE`
 (có hiểu `DELIMITER`).
 
+## Chọn ô và copy
+
+Bấm vào ô để chọn, rồi dùng bàn phím như bảng tính:
+
+| Phím | Việc |
+|---|---|
+| Mũi tên | Di chuyển ô |
+| `Shift` + mũi tên | Mở rộng vùng chọn |
+| `Home` / `End` | Đầu / cuối dòng (`Ctrl` kèm: đầu / cuối lưới) |
+| `PageUp` / `PageDown` | Nhảy một màn hình |
+| `Ctrl+A` | Chọn toàn bộ lưới |
+| `Ctrl+C` | Chép vùng chọn (TSV, dán thẳng vào Excel) |
+| `Ctrl+Shift+C` | Chép kèm dòng tiêu đề cột |
+| `Enter` / `F2` | Sửa ô đang chọn |
+| `Esc` | Bỏ chọn |
+
+Bấm vào cột `#` để chọn cả dòng.
+
+## Bảng chi tiết ô
+
+Nút `⊟` trên thanh công cụ mở bảng chi tiết ở đáy, hiện **đầy đủ** giá trị ô đang chọn.
+
+Cần thiết vì lưới cắt giá trị hai lần: CSS giới hạn bề rộng ô, và dữ liệu gửi sang chỉ lấy
+4.096 ký tự đầu cho nhẹ. Ô bị cắt có dấu `…` màu cam ở mép. Khi bạn chọn ô đó, bảng chi tiết
+**hỏi lại database để lấy nguyên giá trị** (tối đa 2 MB). Có nút định dạng lại JSON cho dễ đọc
+và nút sao chép.
+
+## Thêm dòng mới
+
+Nút **+ Dòng** trên thanh công cụ, hoặc chuột phải vào bảng → *Thêm dòng mới…*
+
+Hộp nhập dựng theo đúng cấu trúc bảng. Ba trạng thái khác nhau cho mỗi cột:
+
+| Bạn làm gì | Kết quả |
+|---|---|
+| Để trống | Dùng mặc định của cột (kể cả `auto_increment`) |
+| Tick **NULL** | Ghi `NULL` thật |
+| Gõ giá trị | Ghi giá trị đó |
+
+Cột bắt buộc có dấu `*`, cột sinh tự động bị khoá. Lỗi thì hộp vẫn mở để bạn sửa, không mất
+những gì đã gõ.
+
 ## Sửa dữ liệu trên lưới
 
 Nhấp đúp vào một ô để sửa.

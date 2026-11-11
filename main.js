@@ -176,7 +176,10 @@ function cell(v) {
   }
   if (typeof v === 'object') return JSON.stringify(v);
   const s = String(v);
-  return s.length > MAX_CELL ? `${s.slice(0, MAX_CELL)}…` : s;
+  // Danh dau ro thay vi lang le them "…": UI can biet day la ban cat de con
+  // tai gia tri day du khi nguoi dung mo bang chi tiet.
+  if (s.length > MAX_CELL) return { text: s.slice(0, MAX_CELL), cat: true, dai: s.length };
+  return s;
 }
 
 // ma kieu cot cua MySQL -> nhom de to mau tren luoi
@@ -620,6 +623,36 @@ handle('db:updateCell', async (connId, database, table, keyValues, column, value
   return { affectedRows: res.affectedRows, changed: res.changedRows, row: await readRow(pool, table, where) };
 });
 
+handle('db:insertRow', async (connId, database, table, giaTri) => {
+  const pool = await getPool(connId, database);
+  const meta = await tableMeta(pool, table);
+
+  // Chi nhan cot co that va khong phai cot sinh tu dong. Cot khong duoc nhac
+  // den thi bo han khoi INSERT de MySQL dung mac dinh / auto_increment.
+  const cot = [];
+  const tri = [];
+  for (const [ten, v] of Object.entries(giaTri || {})) {
+    if (!meta.fields.includes(ten)) throw new Error(`Không có cột ${ten} trong bảng.`);
+    if (meta.generated.includes(ten)) {
+      throw new Error(`Cột ${ten} là cột sinh tự động, không đặt giá trị được.`);
+    }
+    cot.push(mysql.escapeId(ten));
+    tri.push(v);
+  }
+
+  const sql = cot.length
+    ? `INSERT INTO ${mysql.escapeId(table)} (${cot.join(',')})
+         VALUES (${cot.map(() => '?').join(',')})`
+    : `INSERT INTO ${mysql.escapeId(table)} () VALUES ()`;
+  const [r] = await pool.query(sql, tri);
+
+  return {
+    affectedRows: r.affectedRows ?? 0,
+    insertId: r.insertId ? String(r.insertId) : null,
+    soCot: cot.length,
+  };
+});
+
 handle('db:deleteRow', async (connId, database, table, keyValues) => {
   const pool = await getPool(connId, database);
   const where = pkWhere(await tableMeta(pool, table), keyValues);
@@ -639,6 +672,31 @@ async function kiemBangTonTai(pool, database, bang) {
   if (!r.length) throw new Error(`Không tìm thấy ${database}.${bang}`);
   return r[0].loai;
 }
+
+// Doc nguyen gia tri mot o. Luoi cat o MAX_CELL cho nhe, nen khi nguoi dung
+// mo bang chi tiet thi phai hoi lai DB. Tra toi da 2MB cho mot o.
+const MAX_O_CHI_TIET = 2 * 1024 * 1024;
+
+handle('db:cellValue', async (connId, database, table, keyValues, column) => {
+  const pool = await getPool(connId, database);
+  const meta = await tableMeta(pool, table);
+  if (!meta.fields.includes(column)) throw new Error(`Không có cột ${column} trong bảng.`);
+  const where = pkWhere(meta, keyValues);
+  const [rows] = await pool.query(
+    `SELECT ${mysql.escapeId(column)} AS v FROM ${mysql.escapeId(table)}
+      WHERE ${where.sql} LIMIT 1`, where.params);
+  if (!rows.length) throw new Error('Không còn dòng này nữa.');
+
+  const v = rows[0].v;
+  if (v === null) return { giaTri: null };
+  if (Buffer.isBuffer(v)) {
+    return { nhiPhan: true, soByte: v.length, giaTri: `0x${v.subarray(0, 4096).toString('hex')}` };
+  }
+  const s = typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v);
+  return s.length > MAX_O_CHI_TIET
+    ? { giaTri: s.slice(0, MAX_O_CHI_TIET), cat: true, dai: s.length }
+    : { giaTri: s, dai: s.length };
+});
 
 handle('db:dropTable', async (connId, database, bang) => {
   const pool = await getPool(connId, database);
