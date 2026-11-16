@@ -4,12 +4,19 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron')
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
-const mysql = require('mysql2');
-const mysqlp = require('mysql2/promise');
 const { xuat } = require('./lib/xuat-sql');
 const { nhap } = require('./lib/nhap-sql');
 const { hienThi: versionHienThi } = require('./lib/version');
 const { moTunnel } = require('./lib/ssh-tunnel');
+const { driverCho, danhSach: danhSachDriver } = require('./lib/db');
+
+// Driver cua mot ket noi. Ket noi cu khong co truong `loai` -> coi la MySQL.
+function drvCuaCfg(cfg) { return driverCho((cfg && cfg.loai) || 'mysql'); }
+function drvCua(connId) {
+  const c = loadConnections().find((x) => x.id === connId);
+  if (!c) throw new Error('Không tìm thấy kết nối đã lưu.');
+  return driverCho(c.loai || 'mysql');
+}
 
 const CONFIG_FILE = () => path.join(app.getPath('userData'), 'connections.json');
 
@@ -139,41 +146,20 @@ async function diaChiToi(cfg, connId) {
   return { host: '127.0.0.1', port: t.cong, tam: connId ? null : t };
 }
 
-function connConfig(cfg, database) {
-  return {
-    host: cfg.host || '127.0.0.1',
-    port: Number(cfg.port) || 3306,
-    user: cfg.user || 'root',
-    password: cfg.password || '',
-    database: database || undefined,
-    waitForConnections: true,
-    connectionLimit: 4,
-    charset: 'utf8mb4',
-    dateStrings: true,
-    supportBigNumbers: true,
-    bigNumberStrings: true,
-    multipleStatements: false,
-    connectTimeout: 10000,
-  };
-}
 
 async function getPool(connId, database) {
-  const key = `${connId}::${database || ''}`;
-  if (pools.has(key)) return pools.get(key);
   const cfg = loadConnections().find((c) => c.id === connId);
   if (!cfg) throw new Error('Không tìm thấy kết nối đã lưu.');
+  const drv = drvCuaCfg(cfg);
+
+  // Postgres dung chung mot pool cho moi schema (cung mot database), nen khoa
+  // cache phai theo database THUC SU noi toi, khong theo cap hai cua cay.
+  const dbThuc = drv.databaseChoPool(cfg, database);
+  const key = `${connId}::${dbThuc || ''}`;
+  if (pools.has(key)) return pools.get(key);
+
   const dc = await diaChiToi(cfg, connId);
-  const pool = mysqlp.createPool(connConfig({ ...cfg, host: dc.host, port: dc.port }, database));
-
-  // MySQL 8 cache thong ke bang trong data dictionary, mac dinh 86400 giay.
-  // Khong tat thi TABLE_ROWS o information_schema dung yen ca ngay: them
-  // hang chuc nghin dong ma cay ben trai van bao so cu, bam "Lam moi" cung
-  // vo ich. Dat o muc connection vi day la bien phien.
-  // MariaDB khong co bien nay -> nuot loi, khong sao.
-  pool.pool.on('connection', (c) => {
-    c.query('SET SESSION information_schema_stats_expiry = 0', () => {});
-  });
-
+  const pool = await drv.taoPool({ ...cfg, host: dc.host, port: dc.port }, dbThuc);
   pools.set(key, pool);
   return pool;
 }
@@ -218,30 +204,14 @@ function cell(v) {
   return s;
 }
 
-// ma kieu cot cua MySQL -> nhom de to mau tren luoi
-const NUMERIC = new Set([0, 1, 2, 3, 4, 5, 8, 9, 13, 246]);
-const TEMPORAL = new Set([7, 10, 11, 12, 14]);
-const BINARY = new Set([249, 250, 251, 252]);
-
-function colKind(f) {
-  const t = f.columnType;
-  if (NUMERIC.has(t)) return 'num';
-  if (TEMPORAL.has(t)) return 'time';
-  if (t === 245) return 'json';
-  if (t === 16) return 'bool';
-  // BLOB/TEXT deu la ma 252; co co BINARY (128) thi moi that su la blob
-  if (BINARY.has(t) && (f.flags & 128)) return 'blob';
-  if (t === 247 || t === 248) return 'enum';
-  return 'text';
-}
-
-function shapeResult(rows, fields) {
+function shapeResult(rows, fields, drv) {
+  const d = drv || driverCho('mysql');
   const cols = (fields || []).map((f) => ({
-    name: f.name,
-    table: f.table || '',
-    kind: colKind(f),
-    pk: !!(f.flags & 2),
-    unsigned: !!(f.flags & 32),
+    name: d.tenCot(f),
+    table: d.bangCuaCot(f),
+    kind: d.kieuCot(f),
+    pk: d.laKhoaChinh(f),
+    unsigned: d.khongDau(f),
   }));
   const data = Array.isArray(rows) ? rows.map((r) => (Array.isArray(r) ? r.map(cell) : [])) : [];
   return { columns: cols, rows: data };
@@ -253,21 +223,15 @@ function shapeResult(rows, fields) {
 // DEFAULT_GENERATED (vi du `ON UPDATE CURRENT_TIMESTAMP`) — cai do van sua duoc.
 const GENERATED = /\b(VIRTUAL|STORED) GENERATED\b/i;
 
-async function tableMeta(pool, table) {
-  const [cols] = await pool.query(`SHOW FULL COLUMNS FROM ${mysql.escapeId(table)}`);
-  return {
-    fields: cols.map((c) => c.Field),
-    pk: cols.filter((c) => c.Key === 'PRI').map((c) => c.Field),
-    nullable: cols.filter((c) => c.Null === 'YES').map((c) => c.Field),
-    generated: cols.filter((c) => GENERATED.test(c.Extra || '')).map((c) => c.Field),
-    binaryPk: cols.some((c) => c.Key === 'PRI' && /blob|binary/i.test(c.Type)),
-  };
+async function tableMeta(drv, pool, database, table) {
+  return drv.metaBang(pool, database, table);
 }
 
 // Menh de WHERE dinh vi dung mot dong. Ten cot khoa LUON do server tu doc ra tu
 // SHOW FULL COLUMNS — client chi gui gia tri. Neu de client gui ca ten cot thi
 // mot loi phia renderer co the bien thanh UPDATE quet ca bang.
-function pkWhere(meta, keyValues) {
+// Postgres dung $1,$2… con MySQL dung ? — `batDau` la so tham so da dung truoc do.
+function pkWhere(drv, meta, keyValues, batDau = 0) {
   if (!meta.pk.length) {
     throw new Error('Bảng không có khóa chính nên không xác định được dòng cần sửa.');
   }
@@ -278,20 +242,19 @@ function pkWhere(meta, keyValues) {
     throw new Error('Thiếu giá trị khóa chính của dòng.');
   }
   return {
-    sql: meta.pk.map((k) => `${mysql.escapeId(k)} = ?`).join(' AND '),
+    sql: meta.pk.map((k, i) => `${drv.escapeId(k)} = ${drv.thamSo(batDau + i + 1)}`).join(' AND '),
     params: keyValues,
   };
 }
 
 // Doc lai nguyen dong sau khi ghi: trigger, cot sinh tu dong va
 // `ON UPDATE CURRENT_TIMESTAMP` deu co the doi nhung o khac.
-async function readRow(pool, table, where) {
-  const [rows, fields] = await pool.query({
-    sql: `SELECT * FROM ${mysql.escapeId(table)} WHERE ${where.sql} LIMIT 1`,
-    rowsAsArray: true,
-  }, where.params);
-  if (!rows.length) return null;
-  return shapeResult(rows, fields).rows[0];
+async function readRow(drv, pool, database, table, where) {
+  const r = await drv.docTheoDong(pool,
+    `SELECT * FROM ${drv.tenDayDu(database, table)} WHERE ${where.sql} LIMIT 1`,
+    1, where.params);
+  if (!r.rows.length) return null;
+  return shapeResult(r.rows, r.fields, drv).rows[0];
 }
 
 /* ---------------------------------------------------------------- ipc */
@@ -406,6 +369,8 @@ handle('sql:import', async (connId, database, opts = {}, duongDan) => {
   return { ...kq, duongDan, giay: ((Date.now() - batDau) / 1000).toFixed(1) };
 });
 
+handle('db:driverList', async () => danhSachDriver);
+
 handle('app:info', async () => {
   // Doc tu package.json chu khong ghi cung: doi ten/email/phien ban o mot cho.
   // package.json nam trong build.files nen van co mat trong ban dong goi (asar).
@@ -465,6 +430,7 @@ handle('conn:save', async (input) => {
     // giữ mật khẩu cũ nếu form gửi lên placeholder
     password: input.password === CHE && existing ? existing.password : (input.password || ''),
     database: (input.database || '').trim(),
+    loai: input.loai === 'postgres' ? 'postgres' : 'mysql',
 
     sshBat: !!input.sshBat,
     sshHost: (input.sshHost || '').trim(),
@@ -506,12 +472,14 @@ handle('conn:test', async (input) => {
       tam = await moTunnel(sshCfg(cfg));
       cfg = { ...cfg, host: '127.0.0.1', port: tam.cong, sshBat: false };
     }
-    const c = await mysqlp.createConnection(connConfig(cfg, cfg.database || undefined));
+    // Pool mot lan roi dong luon: driver nao cung co taoPool/dongPool
+    const drv = drvCuaCfg(cfg);
+    const pool = await drv.taoPool(cfg, cfg.database || undefined);
     try {
-      const [rows] = await c.query('SELECT VERSION() AS v');
-      return { version: rows[0].v, quaSsh: !!input.sshBat };
+      const rows = await drv.truyVan(pool, 'SELECT VERSION() AS v');
+      return { version: rows[0].v, quaSsh: !!input.sshBat, loai: drv.loai };
     } finally {
-      await c.end();
+      await drv.dongPool(pool);
     }
   } finally {
     if (tam) tam.dong();
@@ -519,61 +487,32 @@ handle('conn:test', async (input) => {
 });
 
 handle('db:databases', async (connId) => {
-  const pool = await getPool(connId, null);
-  const [rows] = await pool.query('SHOW DATABASES');
-  return rows.map((r) => Object.values(r)[0]);
+  const drv = drvCua(connId);
+  return drv.danhSachDatabase(await getPool(connId, null));
 });
 
 handle('db:tables', async (connId, database) => {
-  const pool = await getPool(connId, database);
-  const [rows] = await pool.query(
-    `SELECT TABLE_NAME AS name, TABLE_TYPE AS type, TABLE_ROWS AS est_rows
-       FROM information_schema.TABLES
-      WHERE TABLE_SCHEMA = ?
-      ORDER BY TABLE_NAME`,
-    [database],
-  );
-  return rows.map((r) => ({
-    name: r.name,
-    kind: r.type === 'VIEW' ? 'view' : 'table',
-    estRows: r.est_rows === null ? null : Number(r.est_rows),
-  }));
+  const drv = drvCua(connId);
+  return drv.danhSachBang(await getPool(connId, database), database);
 });
 
 handle('db:columns', async (connId, database, table) => {
-  const pool = await getPool(connId, database);
-  const [rows] = await pool.query(`SHOW FULL COLUMNS FROM ${mysql.escapeId(table)}`);
-  return rows.map((r) => ({
-    field: r.Field,
-    type: r.Type,
-    nullable: r.Null === 'YES',
-    key: r.Key,
-    default: r.Default,
-    extra: r.Extra,
-    comment: r.Comment,
-  }));
+  const drv = drvCua(connId);
+  return drv.cotCuaBang(await getPool(connId, database), database, table);
 });
 
 handle('db:indexes', async (connId, database, table) => {
-  const pool = await getPool(connId, database);
-  const [rows] = await pool.query(`SHOW INDEX FROM ${mysql.escapeId(table)}`);
-  return rows.map((r) => ({
-    name: r.Key_name,
-    column: r.Column_name,
-    unique: Number(r.Non_unique) === 0,
-    type: r.Index_type,
-    seq: Number(r.Seq_in_index),
-  }));
+  const drv = drvCua(connId);
+  return drv.chiMuc(await getPool(connId, database), database, table);
 });
 
 handle('db:ddl', async (connId, database, table) => {
-  const pool = await getPool(connId, database);
-  const [rows] = await pool.query(`SHOW CREATE TABLE ${mysql.escapeId(table)}`);
-  const row = rows[0] || {};
-  return row['Create Table'] || row['Create View'] || '';
+  const drv = drvCua(connId);
+  return drv.ddl(await getPool(connId, database), database, table);
 });
 
 handle('db:rows', async (connId, database, table, opts = {}) => {
+  const drv = drvCua(connId);
   const pool = await getPool(connId, database);
   const limit = Math.min(Math.max(Number(opts.limit) || 200, 1), 5000);
   const offset = Math.max(Number(opts.offset) || 0, 0);
@@ -582,31 +521,31 @@ handle('db:rows', async (connId, database, table, opts = {}) => {
   let orderSql = '';
   if (opts.orderBy) {
     const dir = String(opts.orderDir).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
-    orderSql = ` ORDER BY ${mysql.escapeId(opts.orderBy)} ${dir}`;
+    orderSql = ` ORDER BY ${drv.escapeId(opts.orderBy)} ${dir}`;
   }
-  const from = `FROM ${mysql.escapeId(table)}${whereSql}`;
+  const from = `FROM ${drv.tenDayDu(database, table)}${whereSql}`;
 
   const started = Date.now();
-  const [rows, fields] = await pool.query({
-    sql: `SELECT * ${from}${orderSql} LIMIT ${limit} OFFSET ${offset}`,
-    rowsAsArray: true,
-  });
+  const r = await drv.docTheoDong(pool,
+    `SELECT * ${from}${orderSql} LIMIT ${limit} OFFSET ${offset}`, limit);
   const elapsed = Date.now() - started;
+  const { rows, fields } = r;
 
   // Khoa cua tung dong duoc gui rieng, khong lay lai tu o hien thi: cell() cat
   // chuoi dai va doi Buffer thanh object, dung lai se dinh sai dong.
-  const meta = await tableMeta(pool, table);
-  const pkIdx = meta.pk.map((name) => fields.findIndex((f) => f.name === name));
+  const meta = await tableMeta(drv, pool, database, table);
+  const tenF = (fields || []).map((f) => drv.tenCot(f));
+  const pkIdx = meta.pk.map((name) => tenF.indexOf(name));
   const coDuKhoa = meta.pk.length > 0 && !pkIdx.includes(-1) && !meta.binaryPk;
-  const keys = coDuKhoa ? rows.map((r) => pkIdx.map((i) => r[i])) : null;
+  const keys = coDuKhoa ? rows.map((x) => pkIdx.map((i) => x[i])) : null;
 
   let total = null;
   if (opts.count !== false) {
-    const [cnt] = await pool.query(`SELECT COUNT(*) AS n ${from}`);
+    const cnt = await drv.truyVan(pool, `SELECT COUNT(*) AS n ${from}`);
     total = Number(cnt[0].n);
   }
   return {
-    ...shapeResult(rows, fields),
+    ...shapeResult(rows, fields, drv),
     total, limit, offset, elapsed, keys,
     meta: {
       pk: meta.pk, generated: meta.generated, nullable: meta.nullable,
@@ -619,42 +558,16 @@ handle('db:rows', async (connId, database, table, opts = {}) => {
   };
 });
 
-// Doc ket qua theo dong va DUNG han khi du `max`.
-//
-// Truoc day cho `pool.query` gom ca ket qua vao mang roi tra ve. Mot cau
-// `SELECT * FROM daily` (161.608 dong x 54 cot) lam treo cung cua so: main
-// process phai dung 8,7 trieu chuoi, day het qua IPC, roi renderer dung tung
-// ay the <td>. Stream + destroy() cat o 1.001 dong het 33ms thay vi doc het
-// mat 1,2 giay, va bo nho giu nguyen muc thap.
-function truyVanCoGioiHan(pool, sql, max) {
-  return new Promise((resolve, reject) => {
-    const rows = [];
-    let fields = null;
-    let biCat = false;
-    let xong = false;
-    const ket = (fn, v) => { if (!xong) { xong = true; fn(v); } };
-
-    const stream = pool.pool.query({ sql, rowsAsArray: true }).stream();
-    stream.on('fields', (f) => { fields = f; });
-    stream.on('data', (row) => {
-      if (rows.length < max) rows.push(row);
-      else if (!biCat) { biCat = true; stream.destroy(); }
-    });
-    stream.on('error', (e) => ket(reject, e));
-    stream.on('close', () => ket(resolve, { rows, fields, biCat }));
-  });
-}
-
 handle('db:query', async (connId, database, sql, maxRows) => {
+  const drv = drvCua(connId);
   const pool = await getPool(connId, database || null);
   const gioiHan = Math.min(Math.max(Number(maxRows) || 1000, 1), 50000);
   const started = Date.now();
-  const { rows, fields, biCat } = await truyVanCoGioiHan(pool, sql, gioiHan);
+  const { rows, fields, biCat } = await drv.docTheoDong(pool, sql, gioiHan);
   const elapsed = Date.now() - started;
 
-  // Khong co `fields` nghia la cau lenh khong tra ve bang ket qua;
-  // khi do rows[0] la ResultSetHeader.
-  if (!fields) {
+  // Khong co cot nao -> cau lenh khong tra ve bang ket qua (INSERT/SET/DDL…)
+  if (!fields || !fields.length) {
     const h = rows[0] || {};
     return {
       kind: 'ok',
@@ -664,47 +577,45 @@ handle('db:query', async (connId, database, sql, maxRows) => {
       elapsed,
     };
   }
-  return { kind: 'rows', ...shapeResult(rows, fields), elapsed, biCat, gioiHan };
+  return { kind: 'rows', ...shapeResult(rows, fields, drv), elapsed, biCat, gioiHan };
 });
 
-// Danh sach bang + cot cua ca database, dung cho goi y trong tab truy van.
-// Mot luot query cho ca schema, khong lap qua tung bang.
 handle('db:schema', async (connId, database) => {
-  const pool = await getPool(connId, database);
-  const [rows] = await pool.query(
-    `SELECT TABLE_NAME AS t, COLUMN_NAME AS c
-       FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = ?
-      ORDER BY TABLE_NAME, ORDINAL_POSITION`,
-    [database],
-  );
+  const drv = drvCua(connId);
+  const rows = await drv.schemaGoiY(await getPool(connId, database), database);
   const tables = {};
   for (const r of rows) (tables[r.t] || (tables[r.t] = [])).push(r.c);
   return tables;
 });
 
 handle('db:updateCell', async (connId, database, table, keyValues, column, value) => {
+  const drv = drvCua(connId);
   const pool = await getPool(connId, database);
-  const meta = await tableMeta(pool, table);
+  const meta = await tableMeta(drv, pool, database, table);
   if (!meta.fields.includes(column)) throw new Error(`Không có cột ${column} trong bảng.`);
   if (meta.generated.includes(column)) {
-    throw new Error(`Cột ${column} là cột sinh tự động, MySQL không cho sửa.`);
+    throw new Error(`Cột ${column} là cột sinh tự động, không sửa được.`);
   }
-  const where = pkWhere(meta, keyValues);
+  // Tham so 1 la gia tri moi, nen menh de WHERE danh so tu 2 tro di
+  const where = pkWhere(drv, meta, keyValues, 1);
 
-  const [res] = await pool.query(
-    `UPDATE ${mysql.escapeId(table)} SET ${mysql.escapeId(column)} = ? WHERE ${where.sql} LIMIT 1`,
-    [value, ...where.params],
-  );
-  if (res.affectedRows === 0) {
+  const res = await drv.chay(pool,
+    `UPDATE ${drv.tenDayDu(database, table)} SET ${drv.escapeId(column)} = ${drv.thamSo(1)}`
+    + ` WHERE ${where.sql}${drv.limitUpdate}`,
+    [value, ...where.params]);
+  if (res.soDongAnhHuong === 0) {
     throw new Error('Không khớp dòng nào — có thể dòng đã bị xóa hoặc khóa chính đã đổi.');
   }
-  return { affectedRows: res.affectedRows, changed: res.changedRows, row: await readRow(pool, table, where) };
+  return {
+    affectedRows: res.soDongAnhHuong,
+    row: await readRow(drv, pool, database, table, pkWhere(drv, meta, keyValues)),
+  };
 });
 
 handle('db:insertRow', async (connId, database, table, giaTri) => {
+  const drv = drvCua(connId);
   const pool = await getPool(connId, database);
-  const meta = await tableMeta(pool, table);
+  const meta = await tableMeta(drv, pool, database, table);
 
   // Chi nhan cot co that va khong phai cot sinh tu dong. Cot khong duoc nhac
   // den thi bo han khoi INSERT de MySQL dung mac dinh / auto_increment.
@@ -715,41 +626,43 @@ handle('db:insertRow', async (connId, database, table, giaTri) => {
     if (meta.generated.includes(ten)) {
       throw new Error(`Cột ${ten} là cột sinh tự động, không đặt giá trị được.`);
     }
-    cot.push(mysql.escapeId(ten));
+    cot.push(drv.escapeId(ten));
     tri.push(v);
   }
 
+  const dd = drv.tenDayDu(database, table);
   const sql = cot.length
-    ? `INSERT INTO ${mysql.escapeId(table)} (${cot.join(',')})
-         VALUES (${cot.map(() => '?').join(',')})`
-    : `INSERT INTO ${mysql.escapeId(table)} () VALUES ()`;
-  const [r] = await pool.query(sql, tri);
+    ? `INSERT INTO ${dd} (${cot.join(',')})`
+      + ` VALUES (${cot.map((_, i) => drv.thamSo(i + 1)).join(',')})`
+    : `INSERT INTO ${dd} ${drv.loai === 'postgres' ? 'DEFAULT VALUES' : '() VALUES ()'}`;
+  // Postgres khong co insertId; phai hoi lai bang RETURNING
+  const traVe = drv.insertTraVe && meta.pk.length
+    ? ` RETURNING ${meta.pk.map((k) => drv.escapeId(k)).join(',')}`
+    : '';
+  const r = await drv.chay(pool, sql + traVe, tri);
 
-  return {
-    affectedRows: r.affectedRows ?? 0,
-    insertId: r.insertId ? String(r.insertId) : null,
-    soCot: cot.length,
-  };
+  let { insertId } = r;
+  if (!insertId && traVe && r.rows.length) insertId = String(Object.values(r.rows[0])[0]);
+  return { affectedRows: r.soDongAnhHuong, insertId, soCot: cot.length };
 });
 
 handle('db:deleteRow', async (connId, database, table, keyValues) => {
+  const drv = drvCua(connId);
   const pool = await getPool(connId, database);
-  const where = pkWhere(await tableMeta(pool, table), keyValues);
-  const [res] = await pool.query(
-    `DELETE FROM ${mysql.escapeId(table)} WHERE ${where.sql} LIMIT 1`, where.params,
-  );
-  if (res.affectedRows === 0) throw new Error('Không khớp dòng nào — có thể dòng đã bị xóa.');
-  return { affectedRows: res.affectedRows };
+  const where = pkWhere(drv, await tableMeta(drv, pool, database, table), keyValues);
+  const res = await drv.chay(pool,
+    `DELETE FROM ${drv.tenDayDu(database, table)} WHERE ${where.sql}${drv.limitUpdate}`,
+    where.params);
+  if (res.soDongAnhHuong === 0) throw new Error('Không khớp dòng nào — có thể dòng đã bị xóa.');
+  return { affectedRows: res.soDongAnhHuong };
 });
 
 // Hai thao tac pha huy. Ten bang luon qua escapeId, va server tu kiem tra
 // bang co that trong database do khong — khong tin ten client gui len.
-async function kiemBangTonTai(pool, database, bang) {
-  const [r] = await pool.query(
-    `SELECT TABLE_TYPE AS loai FROM information_schema.TABLES
-      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`, [database, bang]);
-  if (!r.length) throw new Error(`Không tìm thấy ${database}.${bang}`);
-  return r[0].loai;
+async function kiemBangTonTai(drv, pool, database, bang) {
+  const loai = await drv.loaiDoiTuong(pool, database, bang);
+  if (!loai) throw new Error(`Không tìm thấy ${database}.${bang}`);
+  return loai;   // 'table' | 'view'
 }
 
 // Doc nguyen gia tri mot o. Luoi cat o MAX_CELL cho nhe, nen khi nguoi dung
@@ -757,13 +670,14 @@ async function kiemBangTonTai(pool, database, bang) {
 const MAX_O_CHI_TIET = 2 * 1024 * 1024;
 
 handle('db:cellValue', async (connId, database, table, keyValues, column) => {
+  const drv = drvCua(connId);
   const pool = await getPool(connId, database);
-  const meta = await tableMeta(pool, table);
+  const meta = await tableMeta(drv, pool, database, table);
   if (!meta.fields.includes(column)) throw new Error(`Không có cột ${column} trong bảng.`);
-  const where = pkWhere(meta, keyValues);
-  const [rows] = await pool.query(
-    `SELECT ${mysql.escapeId(column)} AS v FROM ${mysql.escapeId(table)}
-      WHERE ${where.sql} LIMIT 1`, where.params);
+  const where = pkWhere(drv, meta, keyValues);
+  const rows = await drv.truyVan(pool,
+    `SELECT ${drv.escapeId(column)} AS v FROM ${drv.tenDayDu(database, table)}`
+    + ` WHERE ${where.sql} LIMIT 1`, where.params);
   if (!rows.length) throw new Error('Không còn dòng này nữa.');
 
   const v = rows[0].v;
@@ -778,19 +692,21 @@ handle('db:cellValue', async (connId, database, table, keyValues, column) => {
 });
 
 handle('db:dropTable', async (connId, database, bang) => {
+  const drv = drvCua(connId);
   const pool = await getPool(connId, database);
-  const loai = await kiemBangTonTai(pool, database, bang);
-  const gi = loai === 'VIEW' ? 'VIEW' : 'TABLE';
-  await pool.query(`DROP ${gi} ${mysql.escapeId(bang)}`);
-  return { bang, loai: gi };
+  const loai = await kiemBangTonTai(drv, pool, database, bang);
+  await drv.chay(pool, drv.cauLenhXoaBang(bang, loai, database));
+  return { bang, loai: loai === 'view' ? 'VIEW' : 'TABLE' };
 });
 
 handle('db:truncateTable', async (connId, database, bang) => {
+  const drv = drvCua(connId);
   const pool = await getPool(connId, database);
-  const loai = await kiemBangTonTai(pool, database, bang);
-  if (loai === 'VIEW') throw new Error('View không có dữ liệu riêng để xóa.');
-  const [truoc] = await pool.query(`SELECT COUNT(*) AS n FROM ${mysql.escapeId(bang)}`);
-  await pool.query(`TRUNCATE TABLE ${mysql.escapeId(bang)}`);
+  const loai = await kiemBangTonTai(drv, pool, database, bang);
+  if (loai === 'view') throw new Error('View không có dữ liệu riêng để xóa.');
+  const truoc = await drv.truyVan(pool,
+    `SELECT COUNT(*) AS n FROM ${drv.tenDayDu(database, bang)}`);
+  await drv.chay(pool, drv.cauLenhXoaSach(bang, database));
   return { bang, soDongDaXoa: Number(truoc[0].n) };
 });
 

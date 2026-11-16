@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
     disconnect: (id) => invoke('db:disconnect', id),
   },
   db: {
+    driverList: () => invoke('db:driverList'),
     databases: (connId) => invoke('db:databases', connId),
     tables: (connId, database) => invoke('db:tables', connId, database),
     columns: (connId, database, table) => invoke('db:columns', connId, database, table),

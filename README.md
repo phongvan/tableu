@@ -58,11 +58,16 @@ Kết quả:
 
 ## Cài đặt
 
+Build xong, script tự in sẵn lệnh cài cho đúng phiên bản vừa tạo — khỏi phải nhớ.
+
 **Cách nên dùng — gói `.deb`:**
 
 ```bash
-sudo apt install ./dist/tableu_0.1.0_amd64.deb
+sudo apt install ./dist/tableu_2.1_amd64.deb
 ```
+
+Dấu `./` là **bắt buộc**. Thiếu nó `apt` tưởng đó là tên gói trên repo và báo
+*"Unable to locate package"*.
 
 Xong là có TableU trong menu ứng dụng, hoặc gõ `tableu` ở terminal.
 Gỡ bằng `sudo apt remove tableu`.
@@ -105,7 +110,7 @@ Trước khi phát hành cho người khác, sửa `homepage` trong `package.jso
 
 | Khu vực | Có gì |
 |---|---|
-| Kết nối | MySQL trực tiếp hoặc **qua SSH tunnel** (khóa riêng / mật khẩu) |
+| Kết nối | **MySQL/MariaDB và PostgreSQL**, trực tiếp hoặc **qua SSH tunnel** (khóa riêng / mật khẩu) |
 | Cây bên trái | Nhiều kết nối · database · bảng/view · số dòng ước lượng · ô lọc tên bảng |
 | Tab dữ liệu | Lưới cuộn với header dính, sắp xếp bằng cách bấm tên cột, phân trang 100–1000 dòng, ô `WHERE` **có gợi ý tên cột**, **sửa ô tại chỗ**, xóa dòng, xuất CSV |
 | Tab cấu trúc | Danh sách cột (kiểu, NULL, khóa, mặc định, ghi chú) + chỉ mục |
@@ -159,6 +164,18 @@ Danh sách cột lấy thẳng từ kết quả vừa hiển thị nên không t
 theo khi bạn chuyển sang bảng khác.
 
 Nội dung ô luôn nằm trên một dòng — dán văn bản nhiều dòng vào sẽ được gộp lại.
+
+## MySQL và PostgreSQL
+
+Chọn loại database ngay đầu hộp kết nối. Cổng mặc định tự đổi theo (3306 / 5432).
+
+Một khác biệt cần biết: **một kết nối PostgreSQL gắn với đúng một database**, nên ô Database
+là bắt buộc, và cấp hai của cây bên trái là **schema** chứ không phải database. Muốn xem
+database khác thì tạo thêm một kết nối.
+
+Hiện PostgreSQL dùng được: duyệt schema/bảng/view, xem cấu trúc và DDL, xem dữ liệu có phân
+trang/sắp xếp/lọc, chạy truy vấn, gợi ý tên bảng cột, sửa ô, thêm và xóa dòng, xóa bảng,
+xóa sạch dữ liệu. **Chưa có**: xuất và nhập SQL — menu đó tự ẩn với kết nối PostgreSQL.
 
 ## Kết nối qua SSH tunnel
 

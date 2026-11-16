@@ -32,11 +32,11 @@ function doc() {
   return JSON.parse(fs.readFileSync(path.join(GOC, 'package.json'), 'utf8'));
 }
 
-function chay(lenh, thamSo, moTa) {
+function chay(lenh, thamSo, moTa, themEnv = {}) {
   const r = spawnSync(lenh, thamSo, {
     cwd: GOC,
     stdio: 'inherit',
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '' },
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '', ...themEnv },
   });
   if (r.status !== 0) {
     console.error(`\nHỏng ở bước: ${moTa}`);
@@ -89,7 +89,7 @@ function main() {
   }
   if (dich === 'deb' || dich === 'all') {
     chay('npx', ['electron-builder', '--linux', 'dir'], 'giải nén bản build');
-    chay('bash', ['scripts/build-deb.sh'], 'đóng gói .deb');
+    chay('bash', ['scripts/build-deb.sh'], 'đóng gói .deb', { TABLEU_IM_LANG: '1' });
   }
 
   console.log('\nXong:');
@@ -97,6 +97,53 @@ function main() {
     if (!fs.existsSync(f)) continue;
     const mb = (fs.statSync(f).size / 1048576).toFixed(0);
     console.log(`  ${path.relative(GOC, f)}  (${mb} MB)`);
+  }
+  huongDanCai(raDeb, raApp, v);
+}
+
+// Phien ban tableu dang cai tren may, de biet lan nay la nang cap hay cai moi.
+function banDangCai() {
+  try {
+    const r = spawnSync('dpkg-query', ['-W', '-f=${Version}', 'tableu'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : null;
+  } catch { return null; }
+}
+
+function huongDanCai(raDeb, raApp, v) {
+  const coDeb = fs.existsSync(raDeb);
+  const coApp = fs.existsSync(raApp);
+  if (!coDeb && !coApp) return;
+
+  console.log('\nCài đặt:');
+
+  if (coDeb) {
+    const duong = path.relative(GOC, raDeb);
+    console.log(`  cd ${GOC}`);
+    console.log(`  sudo apt install ./${duong}`);
+    // Thieu "./" thi apt hieu la ten goi tren repo va bao
+    // "Unable to locate package" — nguoi dung da vap dung cho nay.
+    console.log('\n  Dấu ./ là bắt buộc. Thiếu nó apt tưởng đây là tên gói');
+    console.log('  trên repo và báo "Unable to locate package".');
+
+    const cu = banDangCai();
+    if (cu === v) {
+      console.log(`\n  Máy đang cài đúng ${v} — cài lại sẽ ghi đè bản cũ.`);
+    } else if (cu) {
+      console.log(`\n  Máy đang cài ${cu}, lệnh trên nâng lên ${v} (không cần gỡ trước).`);
+    } else {
+      console.log('\n  Máy chưa cài TableU bao giờ.');
+    }
+    console.log('  Gỡ:  sudo apt remove tableu');
+  }
+
+  if (coApp) {
+    const duong = path.relative(GOC, raApp);
+    console.log(`${coDeb ? '\n  Hoặc bản chạy-liền (không cần cài):\n' : ''}`
+      + `  chmod +x ${duong}\n`
+      + `  ./${duong} --appimage-extract-and-run`);
+    console.log('\n  Cần cờ --appimage-extract-and-run: chạy thẳng AppImage trên máy này');
+    console.log('  bị crash vì sandbox Chromium không exec được qua mount FUSE.');
   }
 }
 

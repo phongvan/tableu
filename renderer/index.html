@@ -68,7 +68,12 @@
     <form method="dialog" id="conn-form">
       <h3 id="conn-dialog-title">Kết nối mới</h3>
       <input type="hidden" id="f-id" />
-      <label>Tên hiển thị<input class="input" id="f-name" placeholder="Local MySQL" /></label>
+      <div class="row">
+        <label class="grow">Loại database
+          <select class="input" id="f-loai"></select></label>
+        <label class="grow">Tên hiển thị
+          <input class="input" id="f-name" placeholder="Local MySQL" /></label>
+      </div>
       <div class="row">
         <label class="grow">Máy chủ<input class="input" id="f-host" value="127.0.0.1" required /></label>
         <label class="port">Cổng<input class="input" id="f-port" type="number" value="3306" required /></label>
@@ -77,7 +82,7 @@
         <label class="grow">Người dùng<input class="input" id="f-user" value="root" required /></label>
         <label class="grow">Mật khẩu<input class="input" id="f-pass" type="password" /></label>
       </div>
-      <label>Database mặc định (tùy chọn)<input class="input" id="f-db" placeholder="để trống = xem tất cả" /></label>
+      <label id="f-db-nhan">Database mặc định (tùy chọn)<input class="input" id="f-db" placeholder="để trống = xem tất cả" /></label>
 
       <label class="chk ssh-bat"><input type="checkbox" id="f-ssh-bat" /> Kết nối qua SSH tunnel</label>
       <div class="ssh-khoi" id="ssh-khoi" hidden>

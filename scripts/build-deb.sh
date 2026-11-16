@@ -78,4 +78,5 @@ chmod 755 "$STAGE/DEBIAN/postinst"
 
 dpkg-deb --root-owner-group -Zxz --build "$STAGE" "$OUT" >/dev/null
 rm -rf "$STAGE"
-echo "Xong: $OUT  ($(du -h "$OUT" | cut -f1))"
+# dong-goi.js da tong ket roi; o day chi bao khi chay truc tiep script nay
+[ -n "${TABLEU_IM_LANG:-}" ] || echo "Xong: $OUT  ($(du -h "$OUT" | cut -f1))"

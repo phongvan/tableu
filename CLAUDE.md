@@ -72,6 +72,39 @@ Cấu hình MySQL đọc từ biến môi trường, mặc định trỏ vào Do
 
 ## Kiến trúc
 
+### Tầng driver (`lib/db/`)
+
+App hỗ trợ **MySQL/MariaDB và PostgreSQL**. `main.js` **không còn `require('mysql2')`** —
+mọi thao tác database đi qua driver lấy bằng `drvCua(connId)`.
+
+| | MySQL | PostgreSQL |
+|---|---|---|
+| Cấp hai của cây | database | **schema** (`nhanCapHai`) |
+| Một kết nối thấy | mọi database | đúng một database (`canDatabase: true`) |
+| Tên bảng trong SQL | `` `bang` `` | `"schema"."bang"` (`tenDayDu`) |
+| Tham số | `?` | `$1, $2…` (`thamSo(i)`) |
+| `UPDATE`/`DELETE` | có `LIMIT 1` | không (`limitUpdate`) |
+| Biết id vừa chèn | `insertId` | phải `RETURNING` (`insertTraVe`) |
+| Xuất/nhập SQL | có | **chưa** (`hoTroXuatNhap: false`) |
+
+**Bẫy lớn nhất**: cấp hai của cây với Postgres là *schema*, không phải *database*.
+`getPool()` gọi `drv.databaseChoPool(cfg, capHai)` — MySQL dùng cấp hai làm database, Postgres
+bỏ qua nó và luôn nối vào `cfg.database`. Đem schema đi mở kết nối sẽ báo
+*"database \"public\" does not exist"* — đã dính một lần.
+Khoá cache pool cũng theo database **thực sự** nối tới, nếu không mỗi schema lại tạo một pool
+y hệt nhau.
+
+Postgres không có `SHOW CREATE TABLE`; `ddl()` **dựng lại** từ catalog nên không khớp từng ký tự
+với `pg_dump`. Ngày giờ được ép giữ dạng chuỗi bằng `types.setTypeParser` cho giống
+`dateStrings` của MySQL — không thì `pg` trả về `Date` và lưới hiện giờ đã đổi múi.
+
+Thêm driver mới thì khai trong `lib/db/index.js`; giao diện tự có thêm lựa chọn trong hộp
+kết nối, không phải sửa renderer.
+
+Test Postgres cần container: `bash test/pg-test.sh up` / `down`. Không có thì suite 13 tự bỏ qua.
+
+### Ba lớp của tiến trình
+
 Ba lớp, ranh giới rõ ràng:
 
 | Lớp | Vai trò |
@@ -321,6 +354,12 @@ Những chỗ này từng tốn thời gian, đừng giẫm lại:
   lấy semver đầy đủ.
   **Cảnh báo khi đổi quy ước**: `dpkg` coi `1.5` < `1.5.0`. Đã phát hành bản ghi `1.5.0` rồi
   thì bản `1.5` sau đó bị xem là cũ hơn và `apt` không cho cài đè.
+- **Build xong luôn in hướng dẫn cài** (`huongDanCai()` trong `dong-goi.js`). Giữ phần nhắc
+  dấu `./` — người dùng đã vấp đúng chỗ đó: `apt install tableu_2.1_amd64.deb` không có `./`
+  thì apt hiểu là tên gói trên repo và báo *"Unable to locate package"*. Script còn đọc
+  `dpkg-query` để nói rõ lần này là cài mới, nâng cấp, hay ghi đè cùng phiên bản.
+  `build-deb.sh` im lặng khi được gọi từ `dong-goi.js` (biến `TABLEU_IM_LANG`) để khỏi
+  in "Xong" hai lần.
 - **Version đi qua [scripts/dong-goi.js](scripts/dong-goi.js)**, không sửa tay `package.json`.
   `npm run dist:deb -- 0.2.0` (hoặc `patch`/`minor`/`major`) ghi version vào `package.json`
   **trước khi** build, vì version còn nằm trong `DEBIAN/control` và hộp thoại Giới thiệu —

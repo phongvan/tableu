@@ -65,6 +65,38 @@ $('#btn-theme').onclick = () =>
 
 const dlg = $('#conn-dialog');
 
+// Danh sach driver do main process cung cap; nap mot lan luc khoi dong.
+let dsDriver = [{ loai: 'mysql', ten: 'MySQL / MariaDB', congMacDinh: 3306,
+                  nhanCapHai: 'Database', canDatabase: false, hoTroXuatNhap: true }];
+const driverTheoLoai = (l) => dsDriver.find((d) => d.loai === l) || dsDriver[0];
+
+async function napDanhSachDriver() {
+  try {
+    dsDriver = unwrap(await api.db.driverList());
+  } catch { /* giu mac dinh */ }
+  const sel = $('#f-loai');
+  sel.textContent = '';
+  for (const d of dsDriver) {
+    const o = el('option', '', d.ten);
+    o.value = d.loai;
+    sel.appendChild(o);
+  }
+}
+
+// Doi nhan va cong mac dinh theo loai database dang chon
+function veTheoLoai(doiCong) {
+  const d = driverTheoLoai($('#f-loai').value);
+  const nhan = $('#f-db-nhan');
+  nhan.childNodes[0].textContent = d.canDatabase
+    ? 'Database (bắt buộc)'
+    : 'Database mặc định (tùy chọn)';
+  $('#f-db').placeholder = d.canDatabase
+    ? 'bắt buộc — Postgres nối vào một database'
+    : 'để trống = xem tất cả';
+  if (doiCong) $('#f-port').value = d.congMacDinh;
+}
+$('#f-loai').onchange = () => veTheoLoai(true);
+
 const sshKhoi = $('#ssh-khoi');
 const sshBat = $('#f-ssh-bat');
 
@@ -81,8 +113,10 @@ function openConnDialog(existing) {
   $('#conn-dialog-title').textContent = existing ? 'Sửa kết nối' : 'Kết nối mới';
   $('#f-id').value = existing ? existing.id : '';
   $('#f-name').value = existing ? existing.name : '';
+  $('#f-loai').value = (existing && existing.loai) || 'mysql';
   $('#f-host').value = existing ? existing.host : '127.0.0.1';
-  $('#f-port').value = existing ? existing.port : 3306;
+  $('#f-port').value = existing ? existing.port : driverTheoLoai($('#f-loai').value).congMacDinh;
+  veTheoLoai(false);
   $('#f-user').value = existing ? existing.user : 'root';
   $('#f-pass').value = existing ? existing.password : '';
   $('#f-db').value = existing ? existing.database || '' : '';
@@ -109,6 +143,7 @@ function setDialogMsg(text, kind) {
 function readForm() {
   return {
     id: $('#f-id').value || undefined,
+    loai: $('#f-loai').value,
     name: $('#f-name').value,
     host: $('#f-host').value,
     port: $('#f-port').value,
@@ -357,15 +392,19 @@ function connMenu(e, conn) {
 }
 
 function dbMenu(e, conn, dbName) {
-  showMenu(e, [
+  const d = driverTheoLoai(conn.loai);
+  const muc = [
     { label: 'Tab truy vấn ở đây', run: () => openQueryTab(conn, dbName) },
     { label: 'Làm mới danh sách bảng', run: () => refreshDb(conn, dbName) },
     '-',
-    { label: 'Xuất database ra SQL…', run: () => moXuat(conn, dbName, null) },
-    { label: 'Nhập từ tệp SQL…', run: () => moNhap(conn, dbName) },
-    '-',
-    { label: 'Sao chép tên', run: () => navigator.clipboard.writeText(dbName) },
-  ]);
+  ];
+  if (d.hoTroXuatNhap) {
+    muc.push({ label: 'Xuất database ra SQL…', run: () => moXuat(conn, dbName, null) });
+    muc.push({ label: 'Nhập từ tệp SQL…', run: () => moNhap(conn, dbName) });
+    muc.push('-');
+  }
+  muc.push({ label: 'Sao chép tên', run: () => navigator.clipboard.writeText(dbName) });
+  showMenu(e, muc);
 }
 
 const xnDlg = $('#xacnhan-dialog');
@@ -456,8 +495,8 @@ function tableMenu(e, conn, dbName, table) {
     '-',
     { label: 'SELECT * trong tab query', run: () => openQueryTab(conn, dbName, `SELECT *\nFROM \`${table}\`\nLIMIT 200;`) },
     '-',
-    { label: 'Xuất bảng ra SQL…', run: () => moXuat(conn, dbName, table) },
-    '-',
+    ...(driverTheoLoai(conn.loai).hoTroXuatNhap
+      ? [{ label: 'Xuất bảng ra SQL…', run: () => moXuat(conn, dbName, table) }, '-'] : []),
     { label: 'Thêm dòng mới…', run: () => moThemDong(conn, dbName, table, async () => {
       const t = state.tabs.find((x) => x.type === 'data' && x.connId === conn.id
         && x.database === dbName && x.table === table);
@@ -616,7 +655,7 @@ function addTab(tab) {
 
 const KIND_LABEL = {
   num: 'số', time: 'ngày giờ', text: 'văn bản', json: 'json',
-  bool: 'bit', enum: 'enum', blob: 'nhị phân',
+  bool: 'đúng/sai', enum: 'enum', blob: 'nhị phân',
 };
 
 function cellContent(td, v) {
@@ -2154,6 +2193,7 @@ api.onMenu('menu:about', moGioiThieu);
 
 /* --------------------------------------------------------------- boot */
 
+napDanhSachDriver();
 reloadConnections().then(() => {
   if (state.connections.length === 0) openConnDialog(null);
 });
