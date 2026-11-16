@@ -43,6 +43,19 @@ EOF
 
 INSTALLED_KB=$(du -sk "$STAGE/opt" "$STAGE/usr" | awk '{s+=$1} END {print s}')
 
+# Doc tu package.json, khong ghi cung: doi tac gia hay mo ta chi sua mot cho.
+MAINTAINER=$(node -p "require('./package.json').build.linux.maintainer")
+HOMEPAGE=$(node -p "require('./package.json').homepage")
+SYNOPSIS=$(node -p "require('./package.json').build.linux.synopsis")
+# Mo ta dai trong DEBIAN/control: moi dong phai bat dau bang mot dau cach
+DESC_DAI=$(node -p "
+  require('./package.json').build.linux.description
+    .split(/\s+/).reduce((d, t) => {
+      const i = d.length - 1;
+      if ((d[i] + ' ' + t).length > 74) d.push(t); else d[i] += ' ' + t;
+      return d;
+    }, ['']).map(l => ' ' + l.trim()).join('\n')")
+
 cat > "$STAGE/DEBIAN/control" <<EOF
 Package: ${PKG}
 Version: ${VERSION}
@@ -51,12 +64,10 @@ Priority: optional
 Architecture: amd64
 Depends: libgtk-3-0, libnotify4, libnss3, libxss1, libxtst6, libatspi2.0-0, libsecret-1-0, xdg-utils
 Installed-Size: ${INSTALLED_KB}
-Maintainer: tinhtn <tinh.icolor@gmail.com>
-Homepage: https://example.com/tableu
-Description: Trinh xem bang va chay truy van MySQL
- Trinh xem bang MySQL gon nhe cho Linux: duyet database, xem du lieu
- dang luoi voi phan trang va sap xep, xem cau truc bang va DDL,
- soan va chay cau lenh SQL.
+Maintainer: ${MAINTAINER}
+Homepage: ${HOMEPAGE}
+Description: ${SYNOPSIS}
+${DESC_DAI}
 EOF
 
 # chrome-sandbox phai setuid root, neu khong Electron se bao loi SUID sandbox

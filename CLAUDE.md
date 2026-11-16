@@ -13,9 +13,7 @@ npm start              # chạy app
 npm run dev            # chạy kèm --enable-logging
 
 npm run pack           # chỉ giải nén ra dist/linux-unpacked
-npm run dist:deb       # pack + scripts/build-deb.sh
-npm run dist:appimage
-npm run dist           # cả hai gói
+npm run dist           # đóng gói .deb (dist:deb là tên gọi khác của cùng lệnh)
 ```
 
 `start`/`dev` cố tình đặt `ELECTRON_RUN_AS_NODE=` ở đầu lệnh. Nếu bỏ đi, app sẽ chết với
@@ -350,10 +348,10 @@ Những chỗ này từng tốn thời gian, đừng giẫm lại:
   có `hienThi()` bỏ đuôi `.0`, dùng chung cho **cả ba chỗ**: tên tệp + `DEBIAN/control` trong
   `build-deb.sh`, tên artifact trong `dong-goi.js`, và hộp Giới thiệu trong `main.js`.
   Thêm chỗ thứ tư thì nhớ dùng lại hàm này, đừng tự cắt chuỗi.
-  AppImage phải **đổi tên sau khi build** vì macro `${version}` của electron-builder luôn
-  lấy semver đầy đủ.
   **Cảnh báo khi đổi quy ước**: `dpkg` coi `1.5` < `1.5.0`. Đã phát hành bản ghi `1.5.0` rồi
   thì bản `1.5` sau đó bị xem là cũ hơn và `apt` không cho cài đè.
+- **Chỉ đóng gói `.deb`.** AppImage đã bị bỏ theo yêu cầu người dùng (không dùng tới) —
+  đừng thêm lại trừ khi được yêu cầu.
 - **Build xong luôn in hướng dẫn cài** (`huongDanCai()` trong `dong-goi.js`). Giữ phần nhắc
   dấu `./` — người dùng đã vấp đúng chỗ đó: `apt install tableu_2.1_amd64.deb` không có `./`
   thì apt hiểu là tên gói trên repo và báo *"Unable to locate package"*. Script còn đọc
@@ -373,11 +371,8 @@ Những chỗ này từng tốn thời gian, đừng giẫm lại:
   `package.json`. Trích asar thì `cd` sang thư mục tạm rồi gọi thẳng `node_modules/.bin/asar`.
 - **`.deb` do [scripts/build-deb.sh](scripts/build-deb.sh) dựng bằng `dpkg-deb`**, không phải
   electron-builder. electron-builder gọi `fpm`, mà `fpm` cần lệnh `ar` trong gói `binutils` —
-  máy này chưa cài. `build.linux.target` trong `package.json` vì thế chỉ còn AppImage.
+  máy này chưa cài. `build.linux.target` trong `package.json` vì thế để `dir`.
   Script tự viết `postinst` đặt `chrome-sandbox` thành setuid root.
-- **AppImage chạy thẳng bị crash trên máy này** (`GPU process isn't usable`). Sandbox của
-  Chromium không exec được chính nó qua mount FUSE. Chạy bằng `--appimage-extract-and-run`
-  (giữ sandbox) hoặc `--no-sandbox` (tắt sandbox). Bản `.deb` không dính lỗi này.
 - `build.electronLanguages` chỉ giữ `en-US` và `vi`; mặc định Electron kèm 55 tệp ngôn ngữ
   chiếm 40 MB.
 - `dist/` và `download/` nằm trong `.gitignore`. File cài đã nén sẵn bên trong nên nén lại

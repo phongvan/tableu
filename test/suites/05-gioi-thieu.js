@@ -33,7 +33,9 @@ async function chay(ctx) {
   ok(noiDung.tacGia === pkg.author.name, `hien tac gia: "${noiDung.tacGia}"`);
   ok(noiDung.email === pkg.author.email, `hien email: "${noiDung.email}"`);
   ok(noiDung.ver === `v${verHienThi}`, `hien phien ban: "${noiDung.ver}"`);
-  ok(noiDung.giayPhep === 'MIT', `hien giay phep: "${noiDung.giayPhep}"`);
+  // Doc tu package.json, dung ghi cung: tac gia va giay phep la thu nguoi
+  // dung doi, test ghi cung se gay moi lan ho sua.
+  ok(noiDung.giayPhep === pkg.license, `hien giay phep: "${noiDung.giayPhep}"`);
   ok(noiDung.moTa.length > 10, `hien mo ta: "${noiDung.moTa.slice(0, 40)}…"`);
   ok(noiDung.rong > 300 && noiDung.rong < 520, `hop thoai rong ${noiDung.rong}px`);
 

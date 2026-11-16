@@ -27,14 +27,11 @@ Test mở cửa sổ thật và thao tác như người dùng. Mọi phép ghi c
 ## Đóng gói
 
 ```bash
-npm run dist                  # cả .deb và .AppImage, dùng version hiện tại
-npm run dist:deb              # chỉ .deb
-npm run dist:appimage         # chỉ .AppImage
-
-npm run dist:deb -- 0.2.0     # đặt version 0.2.0 rồi build
-npm run dist:deb -- patch     # 0.1.0 -> 0.1.1 rồi build
-npm run dist:deb -- minor     # 0.1.0 -> 0.2.0
-npm run dist:deb -- major     # 0.1.0 -> 1.0.0
+npm run dist                  # dùng version hiện tại
+npm run dist -- 2.2           # đặt version 2.2 rồi build
+npm run dist -- patch         # 2.1 -> 2.1.1
+npm run dist -- minor         # 2.1 -> 2.2
+npm run dist -- major         # 2.1 -> 3.0
 ```
 
 Version hiển thị rút gọn còn hai số khi số cuối là 0: `1.5.0` ra thành `tableu_1.5_amd64.deb`
@@ -54,7 +51,6 @@ Kết quả:
 | Tệp | Kích thước |
 |---|---|
 | `dist/tableu_0.1.0_amd64.deb` | ~75 MB |
-| `dist/TableU-0.1.0-x86_64.AppImage` | ~104 MB |
 
 ## Cài đặt
 
@@ -77,22 +73,6 @@ tạo `.desktop` ở `/usr/share/applications/`, và symlink `/usr/bin/tableu`.
 Script `postinst` đặt `chrome-sandbox` thành setuid root để **sandbox của Electron
 chạy đầy đủ** — đã kiểm chứng bản giải nén khởi động ngon với sandbox bật.
 
-**AppImage** (không cần cài, tiện mang sang máy khác):
-
-```bash
-chmod +x dist/TableU-0.1.0-x86_64.AppImage
-./dist/TableU-0.1.0-x86_64.AppImage --appimage-extract-and-run
-```
-
-Trên máy này, chạy AppImage thẳng (`./TableU-...AppImage`) **bị crash**:
-sandbox của Chromium không exec được chính nó qua mount FUSE của AppImage
-(`/etc/fuse.conf` không bật `user_allow_other`, nên tiến trình sau khi vào
-user namespace mất quyền đọc mount đó). Hai cách chạy được:
-
-- `--appimage-extract-and-run` — giữ nguyên sandbox, đổi lại mỗi lần chạy phải giải nén ra `/tmp`
-- `--no-sandbox` — khởi động nhanh nhưng **tắt sandbox renderer**
-
-Vì vậy nên dùng `.deb`; AppImage để dành lúc cần bản chạy-liền.
 
 ### Vì sao không dùng `electron-builder` để tạo `.deb`
 

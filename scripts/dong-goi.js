@@ -63,8 +63,8 @@ function datVersion(dauVao) {
 
 function main() {
   const [dich, version] = process.argv.slice(2);
-  if (!['deb', 'appimage', 'all'].includes(dich)) {
-    console.error('Cách dùng: node scripts/dong-goi.js <deb|appimage|all> [version]');
+  if (dich !== 'deb') {
+    console.error('Cách dùng: node scripts/dong-goi.js deb [version]');
     process.exit(2);
   }
   if (version) datVersion(version);
@@ -73,32 +73,16 @@ function main() {
   console.log(`Đóng gói TableU ${v} (${dich})\n`);
 
   const raDeb = path.join(GOC, 'dist', `tableu_${v}_amd64.deb`);
-  const raApp = path.join(GOC, 'dist', `TableU-${v}-x86_64.AppImage`);
-  for (const f of [raDeb, raApp]) {
-    if (fs.existsSync(f)) console.log(`Lưu ý: sẽ ghi đè ${path.basename(f)}\n`);
-  }
+  if (fs.existsSync(raDeb)) console.log(`Lưu ý: sẽ ghi đè ${path.basename(raDeb)}\n`);
 
-  if (dich === 'appimage' || dich === 'all') {
-    chay('npx', ['electron-builder', '--linux', 'AppImage'], 'build AppImage');
-    // electron-builder dat ten theo macro ${version} nen van ra semver ba so;
-    // doi lai cho khop voi ten .deb.
-    const theoSemver = path.join(GOC, 'dist', `TableU-${doc().version}-x86_64.AppImage`);
-    if (theoSemver !== raApp && fs.existsSync(theoSemver)) {
-      fs.renameSync(theoSemver, raApp);
-    }
-  }
-  if (dich === 'deb' || dich === 'all') {
-    chay('npx', ['electron-builder', '--linux', 'dir'], 'giải nén bản build');
-    chay('bash', ['scripts/build-deb.sh'], 'đóng gói .deb', { TABLEU_IM_LANG: '1' });
-  }
+  chay('npx', ['electron-builder', '--linux', 'dir'], 'giải nén bản build');
+  chay('bash', ['scripts/build-deb.sh'], 'đóng gói .deb', { TABLEU_IM_LANG: '1' });
 
-  console.log('\nXong:');
-  for (const f of [raDeb, raApp]) {
-    if (!fs.existsSync(f)) continue;
-    const mb = (fs.statSync(f).size / 1048576).toFixed(0);
-    console.log(`  ${path.relative(GOC, f)}  (${mb} MB)`);
+  if (fs.existsSync(raDeb)) {
+    const mb = (fs.statSync(raDeb).size / 1048576).toFixed(0);
+    console.log(`\nXong:\n  ${path.relative(GOC, raDeb)}  (${mb} MB)`);
   }
-  huongDanCai(raDeb, raApp, v);
+  huongDanCai(raDeb, v);
 }
 
 // Phien ban tableu dang cai tren may, de biet lan nay la nang cap hay cai moi.
@@ -110,41 +94,23 @@ function banDangCai() {
   } catch { return null; }
 }
 
-function huongDanCai(raDeb, raApp, v) {
-  const coDeb = fs.existsSync(raDeb);
-  const coApp = fs.existsSync(raApp);
-  if (!coDeb && !coApp) return;
+function huongDanCai(raDeb, v) {
+  if (!fs.existsSync(raDeb)) return;
+  const duong = path.relative(GOC, raDeb);
 
   console.log('\nCài đặt:');
+  console.log(`  cd ${GOC}`);
+  console.log(`  sudo apt install ./${duong}`);
+  // Thieu "./" thi apt hieu la ten goi tren repo va bao
+  // "Unable to locate package" — nguoi dung da vap dung cho nay.
+  console.log('\n  Dấu ./ là bắt buộc. Thiếu nó apt tưởng đây là tên gói');
+  console.log('  trên repo và báo "Unable to locate package".');
 
-  if (coDeb) {
-    const duong = path.relative(GOC, raDeb);
-    console.log(`  cd ${GOC}`);
-    console.log(`  sudo apt install ./${duong}`);
-    // Thieu "./" thi apt hieu la ten goi tren repo va bao
-    // "Unable to locate package" — nguoi dung da vap dung cho nay.
-    console.log('\n  Dấu ./ là bắt buộc. Thiếu nó apt tưởng đây là tên gói');
-    console.log('  trên repo và báo "Unable to locate package".');
-
-    const cu = banDangCai();
-    if (cu === v) {
-      console.log(`\n  Máy đang cài đúng ${v} — cài lại sẽ ghi đè bản cũ.`);
-    } else if (cu) {
-      console.log(`\n  Máy đang cài ${cu}, lệnh trên nâng lên ${v} (không cần gỡ trước).`);
-    } else {
-      console.log('\n  Máy chưa cài TableU bao giờ.');
-    }
-    console.log('  Gỡ:  sudo apt remove tableu');
-  }
-
-  if (coApp) {
-    const duong = path.relative(GOC, raApp);
-    console.log(`${coDeb ? '\n  Hoặc bản chạy-liền (không cần cài):\n' : ''}`
-      + `  chmod +x ${duong}\n`
-      + `  ./${duong} --appimage-extract-and-run`);
-    console.log('\n  Cần cờ --appimage-extract-and-run: chạy thẳng AppImage trên máy này');
-    console.log('  bị crash vì sandbox Chromium không exec được qua mount FUSE.');
-  }
+  const cu = banDangCai();
+  if (cu === v) console.log(`\n  Máy đang cài đúng ${v} — cài lại sẽ ghi đè bản cũ.`);
+  else if (cu) console.log(`\n  Máy đang cài ${cu}, lệnh trên nâng lên ${v} (không cần gỡ trước).`);
+  else console.log('\n  Máy chưa cài TableU bao giờ.');
+  console.log('  Gỡ:  sudo apt remove tableu');
 }
 
 main();
